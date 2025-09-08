@@ -345,7 +345,7 @@ class GPTResponsesSearch:
             )
         
         try:
-            openai.api_key = OPENAI_API_KEY
+            client = openai.OpenAI(api_key=OPENAI_API_KEY)
             
             # Enhanced prompt for better web search results
             enhanced_query = f"""
@@ -362,17 +362,12 @@ class GPTResponsesSearch:
             """
             
             # Use GPT-4 with web search capability via Responses API
-            response = openai.ChatCompletion.create(
+            client = openai.OpenAI(api_key=OPENAI_API_KEY)
+            response = client.chat.completions.create(
     model="gpt-4o",
     messages=[
-        {
-            "role": "system",
-            "content": "You are a helpful assistant with access to current web information. Always provide accurate, up-to-date information with proper citations when available."
-        },
-        {
-            "role": "user",
-            "content": enhanced_query
-        }
+        {"role": "system", "content": "..."},
+        {"role": "user", "content": enhanced_query}
     ],
     temperature=0.1,
     max_tokens=4000
