@@ -631,17 +631,6 @@ def main():
     with col2:
         st.write("")
         search_button = st.button("🚀 Search", type="primary", use_container_width=True)
-    
-    # Example queries
-    st.markdown("**💡 Try These Examples:**")
-    examples = [
-        "Latest AI breakthroughs 2025",
-        "Current climate change solutions", 
-        "Recent space exploration missions",
-        "Electric vehicle market trends 2025",
-        "Quantum computing developments"
-    ]
-    
     cols = st.columns(3)
     for i, example in enumerate(examples):
         with cols[i % 3]:
