@@ -631,13 +631,7 @@ def main():
     with col2:
         st.write("")
         search_button = st.button("🚀 Search", type="primary", use_container_width=True)
-    cols = st.columns(3)
-    for i, example in enumerate(examples):
-        with cols[i % 3]:
-            if st.button(example, key=f"ex_{i}", use_container_width=True):
-                st.session_state.main_search = example
-                search_query = example
-                search_button = True
+    
     
     # Execute search
     if search_button and search_query:
