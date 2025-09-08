@@ -7,12 +7,14 @@ import os
 import json
 from dotenv import load_dotenv
 import os
-load_dotenv("API.env")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+#load_dotenv("API.env")
+#GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+#OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # Try importing the new Google GenAI SDK first (recommended)
 #OPENAI_API_KEY="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"
 #GEMINI_API_KEY="AIzaSyBf7QT0LIl1sjghS_Kk7EPSLnwR38Rktso"
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 try:
     from google import genai
     from google.genai import types
