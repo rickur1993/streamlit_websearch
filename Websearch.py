@@ -369,8 +369,8 @@ class GPTResponsesSearch:
                 instructions="You are a helpful assistant with access to current web information. Always provide accurate, up-to-date information with proper citations when available.",
                 input=enhanced_query,
                 tools=[{"type": "web_search"}],
-                temperature=0.1,
-                max_tokens=4000
+                temperature=0.1#,
+                #max_tokens=4000
             )
 
             response_time = time.time() - start_time
