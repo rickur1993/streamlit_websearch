@@ -427,7 +427,7 @@ class GPTResponsesSearch:
                 has_grounding=False
             )
 
-        st.write(response)
+        #st.write(response)
 # ...existing code...
 
     #@staticmethod
