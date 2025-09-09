@@ -10,9 +10,8 @@ import os
 #load_dotenv("API.env")
 #GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 #OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
 # Try importing the new Google GenAI SDK first (recommended)
-#OPENAI_API_KEY="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"
-#GEMINI_API_KEY="AIzaSyBf7QT0LIl1sjghS_Kk7EPSLnwR38Rktso"
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 try:
@@ -110,6 +109,7 @@ class GeminiGroundingSearch:
             - Current facts and latest developments
             - Key insights and important details
             - Recent changes or updates (prioritize 2024/2025 information)
+            - User location is India
             - Multiple perspectives when relevant
             - Specific examples and evidence
             
@@ -325,100 +325,189 @@ class GeminiGroundingSearch:
 
 class GPTResponsesSearch:
     """Handles GPT-4 with OpenAI Responses API for web search"""
-    
-    @staticmethod
-    def search(query: str) -> SearchResult:
-        """Search using GPT-4 with Responses API for web grounding"""
-        start_time = time.time()
-        
-        if not OPENAI_AVAILABLE:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="OpenAI SDK Not Available",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error="OpenAI SDK not installed. Please install: pip install openai",
-                has_grounding=False
-            )
-        
-        try:
-            client = openai.OpenAI(api_key=OPENAI_API_KEY)
-            
-            # Enhanced prompt for better web search results
-            enhanced_query = f"""
-            Please provide comprehensive, current, and accurate information about: "{query}"
-            
-            I need detailed information including:
-            - Current facts and latest developments
-            - Key insights and important details
-            - Recent changes or updates (prioritize 2024/2025 information)
-            - Multiple perspectives when relevant
-            - Specific examples and evidence
-            
-            Please structure your response clearly with proper organization and cite your sources.
-            """
-            
-            # Use GPT-4 with web search capability via Responses API
-            client = openai.OpenAI(api_key=OPENAI_API_KEY)
-            response = client.chat.completions.create(
-    model="gpt-4o",
-    messages=[
-        {"role": "system", "content": "..."},
-        {"role": "user", "content": enhanced_query}
-    ],
-    temperature=0.1,
-    max_tokens=4000
-)
-            
-            response_time = time.time() - start_time
-            
-            # Extract response content
-            response_text = ""
-            if response.choices and response.choices[0].message:
-                response_text = response.choices[0].message.content
-            
-            # Try to extract sources and search queries (basic implementation)
-            sources = []
-            search_queries = [query]  # Basic - actual search queries would need API support
-            has_grounding = True  # Assume GPT-4o has web access
-            
-            # Basic source extraction from response text (looking for URLs)
-            import re
-            url_pattern = r'https?://[^\s<>"{}|\\^`[\]]*'
-            urls = re.findall(url_pattern, response_text)
-            
-            for i, url in enumerate(urls[:10]):  # Limit to 10 sources
+    # ...existing code...
+
+@staticmethod
+def search(query: str) -> SearchResult:
+    """Search using GPT-4 with OpenAI Responses API for web grounding"""
+    start_time = time.time()
+
+    if not OPENAI_AVAILABLE:
+        return SearchResult(
+            success=False,
+            response="",
+            sources=[],
+            search_queries=[],
+            model="OpenAI SDK Not Available",
+            timestamp=datetime.now().isoformat(),
+            response_time=time.time() - start_time,
+            error="OpenAI SDK not installed. Please install: pip install openai",
+            has_grounding=False
+        )
+
+    try:
+        client = openai.OpenAI(api_key=OPENAI_API_KEY)
+
+        # Enhanced prompt for better web search results
+        enhanced_query = f"""
+        Please provide comprehensive, current, and accurate information about: "{query}"
+
+        I need detailed information including:
+        - Current facts and latest developments
+        - Key insights and important details
+        - Recent changes or updates (prioritize 2024/2025 information)
+        - Multiple perspectives when relevant
+        - Specific examples and evidence
+        - User location is India
+
+        Please structure your response clearly with proper organization and cite your sources.
+        """
+
+        # Use the Responses API
+        response = client.responses.create(
+            model="gpt-4o",
+            instructions="You are a helpful assistant with access to current web information. Always provide accurate, up-to-date information with proper citations when available.",
+            input=enhanced_query,
+            tools=[{"type": "web_search"}],
+            temperature=0.1,
+            max_tokens=4000
+        )
+
+        response_time = time.time() - start_time
+
+        # Extract response content
+        response_text = response.output if hasattr(response, "output") else ""
+        sources = []
+        search_queries = [query]
+        has_grounding = True
+
+        # Extract sources from the response (if available)
+        if hasattr(response, "citations"):
+            for i, citation in enumerate(response.citations[:10]):
                 sources.append({
-                    'title': f'Web Source {i+1}',
-                    'uri': url
+                    "title": citation.get("title", f"Web Source {i+1}"),
+                    "uri": citation.get("url", "")
                 })
+
+        return SearchResult(
+            success=True,
+            response=response_text,
+            sources=sources,
+            search_queries=search_queries,
+            model="GPT-4o Responses API with Web Search",
+            timestamp=datetime.now().isoformat(),
+            response_time=response_time,
+            has_grounding=has_grounding
+        )
+
+    except Exception as e:
+        return SearchResult(
+            success=False,
+            response="",
+            sources=[],
+            search_queries=[],
+            model="GPT-4 Responses API (Error)",
+            timestamp=datetime.now().isoformat(),
+            response_time=time.time() - start_time,
+            error=str(e),
+            has_grounding=False
+        )
+# ...existing code...
+
+    #@staticmethod
+    #def search(query: str) -> SearchResult:
+        #"""Search using GPT-4 with Responses API for web grounding"""
+#         start_time = time.time()
+        
+#         if not OPENAI_AVAILABLE:
+#             return SearchResult(
+#                 success=False,
+#                 response="",
+#                 sources=[],
+#                 search_queries=[],
+#                 model="OpenAI SDK Not Available",
+#                 timestamp=datetime.now().isoformat(),
+#                 response_time=time.time() - start_time,
+#                 error="OpenAI SDK not installed. Please install: pip install openai",
+#                 has_grounding=False
+#             )
+        
+#         try:
+#             client = openai.OpenAI(api_key=OPENAI_API_KEY)
             
-            return SearchResult(
-                success=True,
-                response=response_text,
-                sources=sources,
-                search_queries=search_queries,
-                model="GPT-4o with Web Search",
-                timestamp=datetime.now().isoformat(),
-                response_time=response_time,
-                has_grounding=has_grounding
-            )
+#             # Enhanced prompt for better web search results
+#             enhanced_query = f"""
+#             Please provide comprehensive, current, and accurate information about: "{query}"
             
-        except Exception as e:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="GPT-4 (Error)",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error=str(e),
-                has_grounding=False
-            )
+#             I need detailed information including:
+#             - Current facts and latest developments
+#             - Key insights and important details
+#             - Recent changes or updates (prioritize 2024/2025 information)
+#             - Multiple perspectives when relevant
+#             - Specific examples and evidence
+#             -User location is India
+            
+#             Please structure your response clearly with proper organization and cite your sources.
+#             """
+            
+#             # Use GPT-4 with web search capability via Responses API
+#             client = openai.OpenAI(api_key=OPENAI_API_KEY)
+#             response = client.chat.completions.create(
+#     model="gpt-4o",
+#     messages=[
+#         {"role": "system", "content": "..."},
+#         {"role": "user", "content": enhanced_query}
+#     ],
+#     temperature=0.1,
+#     max_tokens=4000
+# )
+            
+#             response_time = time.time() - start_time
+            
+#             # Extract response content
+#             response_text = ""
+#             if response.choices and response.choices[0].message:
+#                 response_text = response.choices[0].message.content
+            
+#             # Try to extract sources and search queries (basic implementation)
+#             sources = []
+#             search_queries = [query]  # Basic - actual search queries would need API support
+#             has_grounding = True  # Assume GPT-4o has web access
+            
+#             # Basic source extraction from response text (looking for URLs)
+#             import re
+#             url_pattern = r'https?://[^\s<>"{}|\\^`[\]]*'
+#             urls = re.findall(url_pattern, response_text)
+            
+#             for i, url in enumerate(urls[:10]):  # Limit to 10 sources
+#                 sources.append({
+#                     'title': f'Web Source {i+1}',
+#                     'uri': url
+#                 })
+            
+#             return SearchResult(
+#                 success=True,
+#                 response=response_text,
+#                 sources=sources,
+#                 search_queries=search_queries,
+#                 model="GPT-4o with Web Search",
+#                 timestamp=datetime.now().isoformat(),
+#                 response_time=response_time,
+#                 has_grounding=has_grounding
+#             )
+            
+#         except Exception as e:
+#             return SearchResult(
+#                 success=False,
+#                 response="",
+#                 sources=[],
+#                 search_queries=[],
+#                 model="GPT-4 (Error)",
+#                 timestamp=datetime.now().isoformat(),
+#                 response_time=time.time() - start_time,
+#                 error=str(e),
+#                 has_grounding=False
+#             )
 
 def add_citations_to_text(response_result: SearchResult) -> str:
     """Add inline citations to the response text"""
