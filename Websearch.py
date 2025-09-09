@@ -327,107 +327,107 @@ class GPTResponsesSearch:
     """Handles GPT-4 with OpenAI Responses API for web search"""
     # ...existing code...
 
-@staticmethod
-def search(query: str) -> SearchResult:
-    """Search using GPT-4 with OpenAI Responses API for web grounding"""
-    start_time = time.time()
+    @staticmethod
+    def search(query: str) -> SearchResult:
+        """Search using GPT-4 with OpenAI Responses API for web grounding"""
+        start_time = time.time()
 
-    if not OPENAI_AVAILABLE:
-        return SearchResult(
-            success=False,
-            response="",
-            sources=[],
-            search_queries=[],
-            model="OpenAI SDK Not Available",
-            timestamp=datetime.now().isoformat(),
-            response_time=time.time() - start_time,
-            error="OpenAI SDK not installed. Please install: pip install openai",
-            has_grounding=False
-        )
+        if not OPENAI_AVAILABLE:
+            return SearchResult(
+                success=False,
+                response="",
+                sources=[],
+                search_queries=[],
+                model="OpenAI SDK Not Available",
+                timestamp=datetime.now().isoformat(),
+                response_time=time.time() - start_time,
+                error="OpenAI SDK not installed. Please install: pip install openai",
+                has_grounding=False
+            )
 
-    try:
-        client = openai.OpenAI(api_key=OPENAI_API_KEY)
+        try:
+            client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-        # Enhanced prompt for better web search results
-        enhanced_query = f"""
-        Please provide comprehensive, current, and accurate information about: "{query}"
+            # Enhanced prompt for better web search results
+            enhanced_query = f"""
+            Please provide comprehensive, current, and accurate information about: "{query}"
 
-        I need detailed information including:
-        - Current facts and latest developments
-        - Key insights and important details
-        - Recent changes or updates (prioritize 2024/2025 information)
-        - Multiple perspectives when relevant
-        - Specific examples and evidence
-        - User location is India
+            I need detailed information including:
+            - Current facts and latest developments
+            - Key insights and important details
+            - Recent changes or updates (prioritize 2024/2025 information)
+            - Multiple perspectives when relevant
+            - Specific examples and evidence
+            - User location is India
 
-        Please structure your response clearly with proper organization and cite your sources.
-        """
+            Please structure your response clearly with proper organization and cite your sources.
+            """
 
-        # Use the Responses API
-        response = client.responses.create(
-            model="gpt-4o",
-            instructions="You are a helpful assistant with access to current web information. Always provide accurate, up-to-date information with proper citations when available.",
-            input=enhanced_query,
-            tools=[{"type": "web_search"}],
-            temperature=0.1,
-            max_tokens=4000
-        )
+            # Use the Responses API
+            response = client.responses.create(
+                model="gpt-4o",
+                instructions="You are a helpful assistant with access to current web information. Always provide accurate, up-to-date information with proper citations when available.",
+                input=enhanced_query,
+                tools=[{"type": "web_search"}],
+                temperature=0.1,
+                max_tokens=4000
+            )
 
-        response_time = time.time() - start_time
+            response_time = time.time() - start_time
 
-        # Extract response content
-        #response_text = response.output if hasattr(response, "output") else ""
-        response_text = getattr(response, "output", "")
-        sources = []
-        search_queries = [query]
-        has_grounding = True
+            # Extract response content
+            #response_text = response.output if hasattr(response, "output") else ""
+            response_text = getattr(response, "output", "")
+            sources = []
+            search_queries = [query]
+            has_grounding = True
 
-        # Extract sources from the response (if available)
-        if hasattr(response, "citations"):
-            for i, citation in enumerate(response.citations[:10]):
-                sources.append({
-                    "title": citation.get("title", f"Web Source {i+1}"),
-                    "uri": citation.get("url", "")
-                })
+            # Extract sources from the response (if available)
+            if hasattr(response, "citations"):
+                for i, citation in enumerate(response.citations[:10]):
+                    sources.append({
+                        "title": citation.get("title", f"Web Source {i+1}"),
+                        "uri": citation.get("url", "")
+                    })
 
-        return SearchResult(
-            success=True,
-            response=response_text,
-            sources=sources,
-            search_queries=search_queries,
-            model="GPT-4o Responses API with Web Search",
-            timestamp=datetime.now().isoformat(),
-            response_time=response_time,
-            has_grounding=has_grounding
-        )
+            return SearchResult(
+                success=True,
+                response=response_text,
+                sources=sources,
+                search_queries=search_queries,
+                model="GPT-4o Responses API with Web Search",
+                timestamp=datetime.now().isoformat(),
+                response_time=response_time,
+                has_grounding=has_grounding
+            )
 
-    except Exception as e:
-        return SearchResult(
-            success=False,
-            response="",
-            sources=[],
-            search_queries=[],
-            model="GPT-4 Responses API (Error)",
-            timestamp=datetime.now().isoformat(),
-            response_time=time.time() - start_time,
-            error=str(e),
-            has_grounding=False
-        )
+        except Exception as e:
+            return SearchResult(
+                success=False,
+                response="",
+                sources=[],
+                search_queries=[],
+                model="GPT-4 Responses API (Error)",
+                timestamp=datetime.now().isoformat(),
+                response_time=time.time() - start_time,
+                error=str(e),
+                has_grounding=False
+            )
 
-    except Exception as e:
-        return SearchResult(
-            success=False,
-            response="",
-            sources=[],
-            search_queries=[],
-            model="GPT-4 Responses API (Error)",
-            timestamp=datetime.now().isoformat(),
-            response_time=time.time() - start_time,
-            error=str(e),
-            has_grounding=False
-        )
+        except Exception as e:
+            return SearchResult(
+                success=False,
+                response="",
+                sources=[],
+                search_queries=[],
+                model="GPT-4 Responses API (Error)",
+                timestamp=datetime.now().isoformat(),
+                response_time=time.time() - start_time,
+                error=str(e),
+                has_grounding=False
+            )
 
-    st.write(response)
+        st.write(response)
 # ...existing code...
 
     #@staticmethod
