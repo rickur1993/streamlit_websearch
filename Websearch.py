@@ -372,9 +372,12 @@ class GPTResponsesSearch:
                 temperature=0.1#,
                 #max_tokens=4000
             )
-            st.write(response)
-            st.write(getattr(response, "output", None))
-            st.write(getattr(getattr(response, "output", None), "content", None))
+            print("RESPONSE STRUCTURE:", response)
+            print("OUTPUT:", getattr(response, "output", None))
+            print("CONTENT:", getattr(getattr(response, "output", None), "content", None))
+            #st.write(response)
+            #st.write(getattr(response, "output", None))
+            #st.write(getattr(getattr(response, "output", None), "content", None))
 
             response_time = time.time() - start_time
 
