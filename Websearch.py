@@ -413,6 +413,21 @@ def search(query: str) -> SearchResult:
             error=str(e),
             has_grounding=False
         )
+
+    except Exception as e:
+        return SearchResult(
+            success=False,
+            response="",
+            sources=[],
+            search_queries=[],
+            model="GPT-4 Responses API (Error)",
+            timestamp=datetime.now().isoformat(),
+            response_time=time.time() - start_time,
+            error=str(e),
+            has_grounding=False
+        )
+
+    st.write(response)
 # ...existing code...
 
     #@staticmethod
