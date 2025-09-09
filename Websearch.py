@@ -372,9 +372,9 @@ class GPTResponsesSearch:
                 temperature=0.1#,
                 #max_tokens=4000
             )
-            print("RESPONSE STRUCTURE:", response)
-            print("OUTPUT:", getattr(response, "output", None))
-            print("CONTENT:", getattr(getattr(response, "output", None), "content", None))
+            #print("RESPONSE STRUCTURE:", response)
+            #print("OUTPUT:", getattr(response, "output", None))
+            #print("CONTENT:", getattr(getattr(response, "output", None), "content", None))
             #st.write(response)
             #st.write(getattr(response, "output", None))
             #st.write(getattr(getattr(response, "output", None), "content", None))
@@ -388,15 +388,25 @@ class GPTResponsesSearch:
             #search_queries = [query]
             #has_grounding = True
             # Extract response content from Responses API
+            # response_text = ""
+            # if hasattr(response, "output") and hasattr(response.output, "content"):
+            #     # output.content is usually a list of ResponseOutputText objects
+            #     response_text = ""
+            #     for part in response.output.content:
+            #         if hasattr(part, "text"):
+            #             response_text += part.text
+            # elif hasattr(response, "output"):
+            #     # Fallback: just use output if it's a string
+            #     response_text = str(response.output)
+            # else:
+            #     response_text = str(response)
             response_text = ""
             if hasattr(response, "output") and hasattr(response.output, "content"):
-                # output.content is usually a list of ResponseOutputText objects
-                response_text = ""
                 for part in response.output.content:
-                    if hasattr(part, "text"):
+                    # Only concatenate if part is a text response
+                    if hasattr(part, "text") and part.text:
                         response_text += part.text
             elif hasattr(response, "output"):
-                # Fallback: just use output if it's a string
                 response_text = str(response.output)
             else:
                 response_text = str(response)
