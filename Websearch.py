@@ -376,7 +376,8 @@ def search(query: str) -> SearchResult:
         response_time = time.time() - start_time
 
         # Extract response content
-        response_text = response.output if hasattr(response, "output") else ""
+        #response_text = response.output if hasattr(response, "output") else ""
+        response_text = getattr(response, "output", "")
         sources = []
         search_queries = [query]
         has_grounding = True
