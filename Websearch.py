@@ -377,7 +377,23 @@ class GPTResponsesSearch:
 
             # Extract response content
             #response_text = response.output if hasattr(response, "output") else ""
-            response_text = getattr(response, "output", "")
+            #response_text = getattr(response, "output", "")
+            #sources = []
+            #search_queries = [query]
+            #has_grounding = True
+            # Extract response content from Responses API
+            response_text = ""
+            if hasattr(response, "output") and hasattr(response.output, "content"):
+                # output.content is usually a list of ResponseOutputText objects
+                response_text = ""
+                for part in response.output.content:
+                    if hasattr(part, "text"):
+                        response_text += part.text
+            elif hasattr(response, "output"):
+                # Fallback: just use output if it's a string
+                response_text = str(response.output)
+            else:
+                response_text = str(response)
             sources = []
             search_queries = [query]
             has_grounding = True
