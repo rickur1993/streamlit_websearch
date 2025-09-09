@@ -469,7 +469,50 @@ class GPTResponsesSearch:
             #st.write(getattr(getattr(response, "output", None), "content", None))
 
             response_time = time.time() - start_time
-
+            print("="*80)
+            print("FULL RESPONSE DEBUG")
+            print("="*80)
+            
+            # Print response type and basic info
+            print(f"Response Type: {type(response)}")
+            print(f"Response Dir: {[attr for attr in dir(response) if not attr.startswith('_')]}")
+            
+            # Try to print the full response object
+            try:
+                print(f"Full Response Object: {response}")
+            except:
+                print("Cannot print full response object")
+            
+            # Check each possible attribute
+            attributes_to_check = ['output', 'content', 'message', 'text', 'choices', 'data', 'result']
+            
+            for attr in attributes_to_check:
+                if hasattr(response, attr):
+                    attr_value = getattr(response, attr)
+                    print(f"\n--- {attr.upper()} ATTRIBUTE ---")
+                    print(f"Type: {type(attr_value)}")
+                    print(f"Value: {attr_value}")
+                    
+                    # If it's the output, check its sub-attributes
+                    if attr == 'output' and attr_value:
+                        print(f"Output Dir: {[a for a in dir(attr_value) if not a.startswith('_')]}")
+                        
+                        # Check common sub-attributes of output
+                        output_attrs = ['content', 'text', 'message', 'data']
+                        for sub_attr in output_attrs:
+                            if hasattr(attr_value, sub_attr):
+                                sub_value = getattr(attr_value, sub_attr)
+                                print(f"  output.{sub_attr} Type: {type(sub_value)}")
+                                print(f"  output.{sub_attr} Value: {sub_value}")
+                                
+                                # If content is a list, check its items
+                                if sub_attr == 'content' and isinstance(sub_value, list):
+                                    for i, item in enumerate(sub_value[:3]):  # Check first 3 items
+                                        print(f"    Content[{i}] Type: {type(item)}")
+                                        print(f"    Content[{i}] Dir: {[a for a in dir(item) if not a.startswith('_')]}")
+                                        print(f"    Content[{i}] Value: {item}")
+            
+            print("="*80)
             # Extract response content
             #response_text = response.output if hasattr(response, "output") else ""
             #response_text = getattr(response, "output", "")
