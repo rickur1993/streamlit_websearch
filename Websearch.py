@@ -401,18 +401,19 @@ class GPTResponsesSearch:
             # else:
             #     response_text = str(response)
             response_text = ""
-            
             if hasattr(response, "output") and hasattr(response.output, "content"):
                 for part in response.output.content:
-                    # If part is a message with content, extract text from its content list
-                    if hasattr(part, "content") and isinstance(part.content, list):
+                    # Only process ResponseOutputMessage objects
+                    if part.__class__.__name__ == "ResponseOutputMessage" and hasattr(part, "content"):
                         for subpart in part.content:
                             if hasattr(subpart, "text") and subpart.text:
                                 response_text += subpart.text
-                    # If part itself has text, use it
+                    # If part itself has text, use it (for text-only responses)
                     elif hasattr(part, "text") and part.text:
                         response_text += part.text
-                    # Otherwise, skip function call objects
+                # If still empty, fallback to string
+                if not response_text:
+                    response_text = str(response.output)
             elif hasattr(response, "output"):
                 response_text = str(response.output)
             else:
