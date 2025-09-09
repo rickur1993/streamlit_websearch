@@ -327,6 +327,95 @@ class GPTResponsesSearch:
     """Handles GPT-4 with OpenAI Responses API for web search"""
     # ...existing code...
 
+    
+    @staticmethod
+    def extract_response_text(response):
+        """
+        Extract the actual response text from OpenAI Responses API response
+        """
+        response_text = ""
+        
+        try:
+            # Method 1: Direct output access (most common)
+            if hasattr(response, 'output') and response.output:
+                if isinstance(response.output, str):
+                    return response.output
+                elif hasattr(response.output, 'content'):
+                    # Handle content array
+                    if isinstance(response.output.content, list):
+                        for content_item in response.output.content:
+                            if hasattr(content_item, 'text') and content_item.text:
+                                response_text += content_item.text
+                    elif isinstance(response.output.content, str):
+                        response_text = response.output.content
+                    else:
+                        response_text = str(response.output.content)
+                else:
+                    response_text = str(response.output)
+            
+            # Method 2: Try accessing as message format (alternative structure)
+            elif hasattr(response, 'message') and hasattr(response.message, 'content'):
+                response_text = response.message.content
+            
+            # Method 3: Try choices format (if it follows chat completion structure)
+            elif hasattr(response, 'choices') and response.choices:
+                choice = response.choices[0]
+                if hasattr(choice, 'message') and hasattr(choice.message, 'content'):
+                    response_text = choice.message.content
+                elif hasattr(choice, 'text'):
+                    response_text = choice.text
+            
+            # Method 4: Last resort - convert to string
+            if not response_text:
+                response_text = str(response)
+        
+        except Exception as e:
+            print(f"Error extracting response text: {e}")
+            response_text = str(response)
+        
+        return response_text.strip() if response_text else ""
+
+    @staticmethod
+    def extract_sources_from_response(response):
+        """
+        Extract sources/citations from OpenAI Responses API response
+        """
+        sources = []
+        
+        try:
+            # Method 1: Check for citations attribute
+            if hasattr(response, 'citations') and response.citations:
+                for i, citation in enumerate(response.citations[:10]):  # Limit to 10
+                    source = {
+                        'title': citation.get('title', f'Web Source {i+1}'),
+                        'uri': citation.get('url', citation.get('uri', ''))
+                    }
+                    if source['uri']:  # Only add if we have a URL
+                        sources.append(source)
+            
+            # Method 2: Check in metadata
+            elif hasattr(response, 'metadata') and response.metadata:
+                if hasattr(response.metadata, 'sources'):
+                    for i, source in enumerate(response.metadata.sources[:10]):
+                        sources.append({
+                            'title': source.get('title', f'Web Source {i+1}'),
+                            'uri': source.get('url', source.get('uri', ''))
+                        })
+            
+            # Method 3: Check in output metadata
+            elif (hasattr(response, 'output') and 
+                  hasattr(response.output, 'metadata') and 
+                  hasattr(response.output.metadata, 'sources')):
+                for i, source in enumerate(response.output.metadata.sources[:10]):
+                    sources.append({
+                        'title': source.get('title', f'Web Source {i+1}'),
+                        'uri': source.get('url', source.get('uri', ''))
+                    })
+        
+        except Exception as e:
+            print(f"Error extracting sources: {e}")
+        
+        return sources
     @staticmethod
     def search(query: str) -> SearchResult:
         """Search using GPT-4 with OpenAI Responses API for web grounding"""
@@ -400,36 +489,16 @@ class GPTResponsesSearch:
             #     response_text = str(response.output)
             # else:
             #     response_text = str(response)
-            response_text = ""
-            if hasattr(response, "output") and hasattr(response.output, "content"):
-                for part in response.output.content:
-                    # Only process ResponseOutputMessage objects
-                    if part.__class__.__name__ == "ResponseOutputMessage" and hasattr(part, "content"):
-                        for subpart in part.content:
-                            if hasattr(subpart, "text") and subpart.text:
-                                response_text += subpart.text
-                    # If part itself has text, use it (for text-only responses)
-                    elif hasattr(part, "text") and part.text:
-                        response_text += part.text
-                # If still empty, fallback to string
-                if not response_text:
-                    response_text = str(response.output)
-            elif hasattr(response, "output"):
-                response_text = str(response.output)
-            else:
-                response_text = str(response)
-            sources = []
+            
+
+        # Extract response text using the helper function
+            response_text = GPTResponsesSearch.extract_response_text(response)
+            
+            # Extract sources using the helper function  
+            sources = GPTResponsesSearch.extract_sources_from_response(response)
+            
             search_queries = [query]
             has_grounding = True
-
-            # Extract sources from the response (if available)
-            if hasattr(response, "citations"):
-                for i, citation in enumerate(response.citations[:10]):
-                    sources.append({
-                        "title": citation.get("title", f"Web Source {i+1}"),
-                        "uri": citation.get("url", "")
-                    })
-
             return SearchResult(
                 success=True,
                 response=response_text,
@@ -454,18 +523,8 @@ class GPTResponsesSearch:
                 has_grounding=False
             )
 
-        except Exception as e:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="GPT-4 Responses API (Error)",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error=str(e),
-                has_grounding=False
-            )
+        
+            
 
         #st.write(response)
 # ...existing code...
