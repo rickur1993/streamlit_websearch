@@ -437,7 +437,6 @@ class GPTResponsesSearch:
         try:
             client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-            # Enhanced prompt for better web search results
             enhanced_query = f"""
             Please provide comprehensive, current, and accurate information about: "{query}"
 
@@ -458,90 +457,78 @@ class GPTResponsesSearch:
                 instructions="You are a helpful assistant with access to current web information. Always provide accurate, up-to-date information with proper citations when available.",
                 input=enhanced_query,
                 tools=[{"type": "web_search"}],
-                temperature=0.1#,
-                #max_tokens=4000
+                temperature=0.1
             )
-            #print("RESPONSE STRUCTURE:", response)
-            #print("OUTPUT:", getattr(response, "output", None))
-            #print("CONTENT:", getattr(getattr(response, "output", None), "content", None))
-            #st.write(response)
-            #st.write(getattr(response, "output", None))
-            #st.write(getattr(getattr(response, "output", None), "content", None))
 
             response_time = time.time() - start_time
-            print("="*80)
-            print("FULL RESPONSE DEBUG")
-            print("="*80)
-            
-            # Print response type and basic info
-            print(f"Response Type: {type(response)}")
-            print(f"Response Dir: {[attr for attr in dir(response) if not attr.startswith('_')]}")
-            
-            # Try to print the full response object
-            try:
-                print(f"Full Response Object: {response}")
-            except:
-                print("Cannot print full response object")
-            
-            # Check each possible attribute
-            attributes_to_check = ['output', 'content', 'message', 'text', 'choices', 'data', 'result']
-            
-            for attr in attributes_to_check:
-                if hasattr(response, attr):
-                    attr_value = getattr(response, attr)
-                    print(f"\n--- {attr.upper()} ATTRIBUTE ---")
-                    print(f"Type: {type(attr_value)}")
-                    print(f"Value: {attr_value}")
-                    
-                    # If it's the output, check its sub-attributes
-                    if attr == 'output' and attr_value:
-                        print(f"Output Dir: {[a for a in dir(attr_value) if not a.startswith('_')]}")
-                        
-                        # Check common sub-attributes of output
-                        output_attrs = ['content', 'text', 'message', 'data']
-                        for sub_attr in output_attrs:
-                            if hasattr(attr_value, sub_attr):
-                                sub_value = getattr(attr_value, sub_attr)
-                                print(f"  output.{sub_attr} Type: {type(sub_value)}")
-                                print(f"  output.{sub_attr} Value: {sub_value}")
-                                
-                                # If content is a list, check its items
-                                if sub_attr == 'content' and isinstance(sub_value, list):
-                                    for i, item in enumerate(sub_value[:3]):  # Check first 3 items
-                                        print(f"    Content[{i}] Type: {type(item)}")
-                                        print(f"    Content[{i}] Dir: {[a for a in dir(item) if not a.startswith('_')]}")
-                                        print(f"    Content[{i}] Value: {item}")
-            
-            print("="*80)
-            # Extract response content
-            #response_text = response.output if hasattr(response, "output") else ""
-            #response_text = getattr(response, "output", "")
-            #sources = []
-            #search_queries = [query]
-            #has_grounding = True
-            # Extract response content from Responses API
-            # response_text = ""
-            # if hasattr(response, "output") and hasattr(response.output, "content"):
-            #     # output.content is usually a list of ResponseOutputText objects
-            #     response_text = ""
-            #     for part in response.output.content:
-            #         if hasattr(part, "text"):
-            #             response_text += part.text
-            # elif hasattr(response, "output"):
-            #     # Fallback: just use output if it's a string
-            #     response_text = str(response.output)
-            # else:
-            #     response_text = str(response)
-            
 
-        # Extract response text using the helper function
-            response_text = GPTResponsesSearch.extract_response_text(response)
+            # ==============================================================================
+            # CORRECT PARSING LOGIC BASED ON YOUR DEBUG OUTPUT
+            # ==============================================================================
             
-            # Extract sources using the helper function  
-            sources = GPTResponsesSearch.extract_sources_from_response(response)
-            
+            response_text = ""
+            sources = []
             search_queries = [query]
-            has_grounding = True
+            
+            try:
+                # Based on your debug output: response.output is a list
+                # Item 0: ResponseFunctionWebSearch (web search call)  
+                # Item 1: ResponseOutputMessage (actual response content)
+                
+                if hasattr(response, 'output') and isinstance(response.output, list):
+                    
+                    # Find the ResponseOutputMessage in the output list
+                    for item in response.output:
+                        # Check if this is the message response (not the web search call)
+                        if (hasattr(item, 'type') and item.type == 'message' and 
+                            hasattr(item, 'content') and isinstance(item.content, list)):
+                            
+                            # Extract text from message content
+                            for content_item in item.content:
+                                if hasattr(content_item, 'text') and content_item.text:
+                                    response_text += content_item.text
+                                    
+                                    # Extract sources from annotations if available
+                                    if hasattr(content_item, 'annotations'):
+                                        for annotation in content_item.annotations:
+                                            if (hasattr(annotation, 'type') and 
+                                                annotation.type == 'url_citation'):
+                                                source = {
+                                                    'title': getattr(annotation, 'title', 'Web Source'),
+                                                    'uri': getattr(annotation, 'url', '')
+                                                }
+                                                if source['uri'] and source not in sources:
+                                                    sources.append(source)
+                            break
+                    
+                    # If no message found, try alternative parsing
+                    if not response_text and len(response.output) > 1:
+                        # Try the second item (index 1) as it's usually the response
+                        second_item = response.output[1]
+                        if hasattr(second_item, 'content') and isinstance(second_item.content, list):
+                            for content_item in second_item.content:
+                                if hasattr(content_item, 'text'):
+                                    response_text += content_item.text
+                
+                # Clean up response text
+                response_text = response_text.strip() if response_text else ""
+                
+                # Remove duplicate sources (keep unique URLs)
+                unique_sources = []
+                seen_urls = set()
+                for source in sources:
+                    if source['uri'] not in seen_urls:
+                        unique_sources.append(source)
+                        seen_urls.add(source['uri'])
+                sources = unique_sources[:10]  # Limit to 10 sources
+                
+            except Exception as parsing_error:
+                print(f"Parsing error: {parsing_error}")
+                # Fallback to string conversion
+                response_text = str(response)
+            
+            has_grounding = len(sources) > 0 or "web_search" in str(response.output)
+
             return SearchResult(
                 success=True,
                 response=response_text,
@@ -565,6 +552,155 @@ class GPTResponsesSearch:
                 error=str(e),
                 has_grounding=False
             )
+    # @staticmethod
+    # def search(query: str) -> SearchResult:
+    #     """Search using GPT-4 with OpenAI Responses API for web grounding"""
+    #     start_time = time.time()
+
+    #     if not OPENAI_AVAILABLE:
+    #         return SearchResult(
+    #             success=False,
+    #             response="",
+    #             sources=[],
+    #             search_queries=[],
+    #             model="OpenAI SDK Not Available",
+    #             timestamp=datetime.now().isoformat(),
+    #             response_time=time.time() - start_time,
+    #             error="OpenAI SDK not installed. Please install: pip install openai",
+    #             has_grounding=False
+    #         )
+
+    #     try:
+    #         client = openai.OpenAI(api_key=OPENAI_API_KEY)
+
+    #         # Enhanced prompt for better web search results
+    #         enhanced_query = f"""
+    #         Please provide comprehensive, current, and accurate information about: "{query}"
+
+    #         I need detailed information including:
+    #         - Current facts and latest developments
+    #         - Key insights and important details
+    #         - Recent changes or updates (prioritize 2024/2025 information)
+    #         - Multiple perspectives when relevant
+    #         - Specific examples and evidence
+    #         - User location is India
+
+    #         Please structure your response clearly with proper organization and cite your sources.
+    #         """
+
+    #         # Use the Responses API
+    #         response = client.responses.create(
+    #             model="gpt-4o",
+    #             instructions="You are a helpful assistant with access to current web information. Always provide accurate, up-to-date information with proper citations when available.",
+    #             input=enhanced_query,
+    #             tools=[{"type": "web_search"}],
+    #             temperature=0.1#,
+    #             #max_tokens=4000
+    #         )
+    #         #print("RESPONSE STRUCTURE:", response)
+    #         #print("OUTPUT:", getattr(response, "output", None))
+    #         #print("CONTENT:", getattr(getattr(response, "output", None), "content", None))
+    #         #st.write(response)
+    #         #st.write(getattr(response, "output", None))
+    #         #st.write(getattr(getattr(response, "output", None), "content", None))
+
+    #         response_time = time.time() - start_time
+    #         print("="*80)
+    #         print("FULL RESPONSE DEBUG")
+    #         print("="*80)
+            
+    #         # Print response type and basic info
+    #         print(f"Response Type: {type(response)}")
+    #         print(f"Response Dir: {[attr for attr in dir(response) if not attr.startswith('_')]}")
+            
+    #         # Try to print the full response object
+    #         try:
+    #             print(f"Full Response Object: {response}")
+    #         except:
+    #             print("Cannot print full response object")
+            
+    #         # Check each possible attribute
+    #         attributes_to_check = ['output', 'content', 'message', 'text', 'choices', 'data', 'result']
+            
+    #         for attr in attributes_to_check:
+    #             if hasattr(response, attr):
+    #                 attr_value = getattr(response, attr)
+    #                 print(f"\n--- {attr.upper()} ATTRIBUTE ---")
+    #                 print(f"Type: {type(attr_value)}")
+    #                 print(f"Value: {attr_value}")
+                    
+    #                 # If it's the output, check its sub-attributes
+    #                 if attr == 'output' and attr_value:
+    #                     print(f"Output Dir: {[a for a in dir(attr_value) if not a.startswith('_')]}")
+                        
+    #                     # Check common sub-attributes of output
+    #                     output_attrs = ['content', 'text', 'message', 'data']
+    #                     for sub_attr in output_attrs:
+    #                         if hasattr(attr_value, sub_attr):
+    #                             sub_value = getattr(attr_value, sub_attr)
+    #                             print(f"  output.{sub_attr} Type: {type(sub_value)}")
+    #                             print(f"  output.{sub_attr} Value: {sub_value}")
+                                
+    #                             # If content is a list, check its items
+    #                             if sub_attr == 'content' and isinstance(sub_value, list):
+    #                                 for i, item in enumerate(sub_value[:3]):  # Check first 3 items
+    #                                     print(f"    Content[{i}] Type: {type(item)}")
+    #                                     print(f"    Content[{i}] Dir: {[a for a in dir(item) if not a.startswith('_')]}")
+    #                                     print(f"    Content[{i}] Value: {item}")
+            
+    #         print("="*80)
+    #         # Extract response content
+    #         #response_text = response.output if hasattr(response, "output") else ""
+    #         #response_text = getattr(response, "output", "")
+    #         #sources = []
+    #         #search_queries = [query]
+    #         #has_grounding = True
+    #         # Extract response content from Responses API
+    #         # response_text = ""
+    #         # if hasattr(response, "output") and hasattr(response.output, "content"):
+    #         #     # output.content is usually a list of ResponseOutputText objects
+    #         #     response_text = ""
+    #         #     for part in response.output.content:
+    #         #         if hasattr(part, "text"):
+    #         #             response_text += part.text
+    #         # elif hasattr(response, "output"):
+    #         #     # Fallback: just use output if it's a string
+    #         #     response_text = str(response.output)
+    #         # else:
+    #         #     response_text = str(response)
+            
+
+    #     # Extract response text using the helper function
+    #         response_text = GPTResponsesSearch.extract_response_text(response)
+            
+    #         # Extract sources using the helper function  
+    #         sources = GPTResponsesSearch.extract_sources_from_response(response)
+            
+    #         search_queries = [query]
+    #         has_grounding = True
+    #         return SearchResult(
+    #             success=True,
+    #             response=response_text,
+    #             sources=sources,
+    #             search_queries=search_queries,
+    #             model="GPT-4o Responses API with Web Search",
+    #             timestamp=datetime.now().isoformat(),
+    #             response_time=response_time,
+    #             has_grounding=has_grounding
+    #         )
+
+    #     except Exception as e:
+    #         return SearchResult(
+    #             success=False,
+    #             response="",
+    #             sources=[],
+    #             search_queries=[],
+    #             model="GPT-4 Responses API (Error)",
+    #             timestamp=datetime.now().isoformat(),
+    #             response_time=time.time() - start_time,
+    #             error=str(e),
+    #             has_grounding=False
+    #         )
 
         
             
