@@ -822,11 +822,14 @@ class GrokLiveSearch:
                         ],
                         "temperature": 0.1,
                         "search_parameters": {
-                                    "mode": "auto",
-                                    "return_citations": True,
-                                    "max_results": 20,
-                                    "sources": ["web","x"]
-                                }
+                                "mode": "auto",
+                                "return_citations": True,
+                                "max_results": 20,
+                                "sources": [
+                                    {"type": "web"},
+                                    {"type": "x"}
+                                ]
+                                            }
                             },
                     
                     timeout=60
