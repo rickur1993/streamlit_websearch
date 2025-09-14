@@ -826,8 +826,8 @@ class GrokLiveSearch:
                                 "return_citations": True,
                                 "max_results": 20,
                                 "sources": [
-                                    {"type": "web"},
-                                    {"type": "x"}
+                                    {"type": "web"}#,
+                                    #{"type": "x"}
                                 ]
                                             }
                             },
