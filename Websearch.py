@@ -821,8 +821,14 @@ class GrokLiveSearch:
                             {"role": "user", "content": enhanced_query}
                         ],
                         "temperature": 0.1,
-                        "search_parameters": search_params
-                    },
+                        "search_parameters": {
+                                    "mode": "auto",
+                                    "return_citations": True,
+                                    "max_results": 20,
+                                    "sources": ["web"]
+                                }
+                            },
+                    
                     timeout=60
                 )
             response_data = response.json()
