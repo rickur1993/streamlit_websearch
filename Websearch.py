@@ -832,7 +832,7 @@ class GrokLiveSearch:
                                             }
                             },
                     
-                    timeout=60
+                    timeout=180
                 )
             if response.status_code != 200:
                 raise Exception(f"API request failed with status {response.status_code}: {response.text}")
