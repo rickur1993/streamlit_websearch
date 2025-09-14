@@ -795,8 +795,8 @@ class GrokLiveSearch:
             # Configure search parameters for live search
             search_params = SearchParameters(
                 mode="auto",  # Let Grok decide when to search
-                return_citations=True,  # Include citations
-                #max_results=20,  # Maximum search results to consider
+                citations=True,  # Include citations
+                max_results=20,  # Maximum search results to consider
                 sources=["web", "x"]  # Search both web and X/Twitter
             )
             
@@ -804,8 +804,8 @@ class GrokLiveSearch:
             response = client.chat.completions.create(
                 model="grok-4-0709",  # Latest Grok-4 model
                 messages=[
-                    {"role": "system", "content": "You are Grok, an AI assistant with real-time web search capabilities. Always provide accurate, current information and cite your sources when possible. Use your live search feature to find the most recent information available."},
-                    {"role": "user", "content": enhanced_query}
+                    system("You are Grok, an AI assistant with real-time web search capabilities. Always provide accurate, current information and cite your sources when possible. Use your live search feature to find the most recent information available."),
+                    user(enhanced_query)
                 ],
                 temperature=0.1,
                 #max_tokens=2048,
