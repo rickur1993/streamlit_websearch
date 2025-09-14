@@ -4,3 +4,4 @@ python-dotenv
 google-genai
 requests
 google-generativeai
+xai-sdk
