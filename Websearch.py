@@ -54,7 +54,7 @@ st.set_page_config(
 try:
     from xai_sdk import Client
     from xai_sdk.chat import user, system
-    from xai_sdk import SearchParameters
+    from xai_sdk.search import SearchParameters  
     XAI_AVAILABLE = True
 except ImportError:
     XAI_AVAILABLE = False
@@ -774,7 +774,7 @@ class GrokLiveSearch:
         
         try:
             # Initialize xAI client
-            client = xai_sdk.Client(api_key=XAI_API_KEY)
+            client = Client(api_key=XAI_API_KEY)
             
             # Enhanced query for Grok's live search
             enhanced_query = f"""
