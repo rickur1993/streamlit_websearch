@@ -1064,7 +1064,7 @@ def display_search_result(result: SearchResult):
 def main():
     # Header
     st.title("🔍Websearch Comparison")
-    st.markdown("**Choose between Gemini 2.5/2.0 Flash Grounding, GPT-4 Responses API, or GPT-4o with Serper API**")
+    st.markdown("**Choose between Gemini 2.5/2.0 Flash Grounding, or GPT-4o Responses API, or GPT-4o with Serper API, or Grok4 with Live search**")
     
     # Model Selection
     st.subheader("🤖 Select AI Model")
@@ -1113,7 +1113,7 @@ def main():
             st.error(f"❌ {sdk_info}")
     elif "Responses API" in selected_model:
         if openai_available:
-            st.success("✅ OpenAI SDK available - GPT-4 with web search enabled")
+            st.success("✅ OpenAI SDK available - GPT-4o with web search enabled")
         else:
             st.error("❌ OpenAI SDK not available")
     elif "Serper API" in selected_model:
@@ -1194,7 +1194,7 @@ def main():
                 st.error("❌ OpenAI API key not configured in code")
                 return
             
-            with st.spinner(f"🔍 Searching with GPT-4 Responses API..."):
+            with st.spinner(f"🔍 Searching with GPT-4o Responses API..."):
                 result = GPTResponsesSearch.search(search_query)
 
         elif "Serper API" in selected_model:  # GPT-4o with Serper
