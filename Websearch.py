@@ -850,11 +850,20 @@ class GrokLiveSearch:
             # Extract response text
             # Extract response text from HTTP response
             
+            # Extract response text from HTTP response
             response_text = ""
-            if 'choices' in response_data and response_data['choices']:
-                response_text = response_data['choices'][0].get('message', {}).get('content', '')
-            elif 'content' in response_data:
-                response_text = response_data['content']
+
+            # Check if response_data is a string (direct text response)
+            if isinstance(response_data, str):
+                response_text = response_data
+            # Check if it's a dict with standard chat completion format
+            elif isinstance(response_data, dict):
+                if 'choices' in response_data and response_data['choices']:
+                    response_text = response_data['choices'][0].get('message', {}).get('content', '')
+                elif 'content' in response_data:
+                    response_text = response_data['content']
+                else:
+                    response_text = str(response_data)
             else:
                 response_text = str(response_data)
             
@@ -865,12 +874,23 @@ class GrokLiveSearch:
             
             # Extract usage information if available
             # Extract usage information if available
-            usage = response_data.get('usage', {})
-            has_grounding = usage.get('num_sources_used', 0) > 0
+            #usage = response_data.get('usage', {})
+            #has_grounding = usage.get('num_sources_used', 0) > 0
+            # Extract usage information if available
+            if isinstance(response_data, dict):
+                usage = response_data.get('usage', {})
+                has_grounding = usage.get('num_sources_used', 0) > 0
+            else:
+                has_grounding = False
             
             # Extract citations from response
             # Extract citations from response
-            citations = response_data.get('citations', [])
+            #citations = response_data.get('citations', [])
+            # Extract citations from response
+            if isinstance(response_data, dict):
+                citations = response_data.get('citations', [])
+            else:
+                citations = []
             for citation in citations:
                 source = {
                     'title': citation.get('title', 'Web Source'),
