@@ -801,24 +801,44 @@ class GrokLiveSearch:
             )
             
             # Make request with live search enabled
-            response = client.chat.create(
-                model="grok-4-0709",  # Latest Grok-4 model
-                messages=enhanced_query,
-                temperature=0.1,
+            #response = client.chat.create(
+                #model="grok-4-0709",  # Latest Grok-4 model
+                #messages=enhanced_query,
+                #temperature=0.1,
                 #max_tokens=2048,
-                search_parameters=search_params  # Enable live search
-            )
+                #search_parameters=search_params  # Enable live search
+            #)
+            response = requests.post(
+                    "https://api.x.ai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {XAI_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": "grok-4-0709",
+                        "messages": [
+                            {"role": "system", "content": "You are Grok with search capabilities."},
+                            {"role": "user", "content": enhanced_query}
+                        ],
+                        "temperature": 0.1,
+                        "search_parameters": search_params
+                    },
+                    timeout=60
+                )
+            response_data = response.json()
             
             response_time = time.time() - start_time
             
             # Extract response text
+            # Extract response text from HTTP response
+            
             response_text = ""
-            if hasattr(response, 'choices') and response.choices:
-                response_text = response.choices[0].message.content
-            elif hasattr(response, 'content'):
-                response_text = response.content
+            if 'choices' in response_data and response_data['choices']:
+                response_text = response_data['choices'][0].get('message', {}).get('content', '')
+            elif 'content' in response_data:
+                response_text = response_data['content']
             else:
-                response_text = str(response)
+                response_text = str(response_data)
             
             # Extract sources from response and usage data
             sources = []
@@ -826,20 +846,21 @@ class GrokLiveSearch:
             has_grounding = False
             
             # Extract usage information if available
-            if hasattr(response, 'usage') and hasattr(response.usage, 'num_sources_used'):
-                has_grounding = response.usage.num_sources_used > 0
+            # Extract usage information if available
+            usage = response_data.get('usage', {})
+            has_grounding = usage.get('num_sources_used', 0) > 0
             
             # Extract citations from response
-            if hasattr(response, 'citations') and response.citations:
-                for citation in response.citations:
-                    source = {
-                        'title': getattr(citation, 'title', 'Web Source'),
-                        'uri': getattr(citation, 'url', getattr(citation, 'uri', ''))
-                    }
-                    if source['uri']:
-                        sources.append(source)
-            else:
-                # Fallback: extract sources from response text
+            # Extract citations from response
+            citations = response_data.get('citations', [])
+            for citation in citations:
+                source = {
+                    'title': citation.get('title', 'Web Source'),
+                    'uri': citation.get('url', citation.get('uri', ''))
+                }
+                if source['uri']:
+                    sources.append(source)
+            if not sources:
                 sources = GrokLiveSearch.extract_sources_from_response(response_text)
             
             # If no citations found but response seems to have web data, mark as grounded
