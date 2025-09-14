@@ -825,7 +825,7 @@ class GrokLiveSearch:
                                     "mode": "auto",
                                     "return_citations": True,
                                     "max_results": 20,
-                                    "sources": ["web"]
+                                    "sources": ["web","x"]
                                 }
                             },
                     
