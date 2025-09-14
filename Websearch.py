@@ -774,7 +774,7 @@ class GrokLiveSearch:
         
         try:
             # Initialize xAI client
-            client = Client(api_key=XAI_API_KEY)
+            client = xai_sdk.Client(api_key=XAI_API_KEY)
             
             # Enhanced query for Grok's live search
             enhanced_query = f"""
