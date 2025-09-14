@@ -831,7 +831,16 @@ class GrokLiveSearch:
                     
                     timeout=60
                 )
-            response_data = response.json()
+            if response.status_code != 200:
+                raise Exception(f"API request failed with status {response.status_code}: {response.text}")
+
+            if not response.text.strip():
+                raise Exception("Empty response from API")
+
+            try:
+                response_data = response.json()
+            except ValueError as e:
+                raise Exception(f"Invalid JSON response: {response.text[:500]}")
             
             response_time = time.time() - start_time
             
