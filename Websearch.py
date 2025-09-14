@@ -1264,7 +1264,7 @@ def main():
         st.markdown(f"""
         **🔍 Available Models:**
         - Gemini: {'Available' if gemini_available else 'Not Available'}
-        - GPT-4: {'Available' if openai_available else 'Not Available'}
+        - GPT-4o: {'Available' if openai_available else 'Not Available'}
         - GPT-4o Serper: {'Available' if (openai_available and serper_available) else 'Not Available'}
         - Grok-4: {'Available' if grok_available else 'Not Available'}
         - Grounding: All support web search
