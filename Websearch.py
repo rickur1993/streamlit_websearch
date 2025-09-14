@@ -796,7 +796,7 @@ class GrokLiveSearch:
             search_params = SearchParameters(
                 mode="auto",  # Let Grok decide when to search
                 return_citations=True,  # Include citations
-                max_results=20,  # Maximum search results to consider
+                #max_results=20,  # Maximum search results to consider
                 sources=["web", "x"]  # Search both web and X/Twitter
             )
             
