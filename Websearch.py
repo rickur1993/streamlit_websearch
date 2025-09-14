@@ -8,7 +8,6 @@ import json
 from dotenv import load_dotenv
 import os
 import requests
-
 #load_dotenv("API.env")
 #GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 #OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -17,6 +16,7 @@ import requests
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 SERPER_API_KEY = st.secrets["SERPER_API_KEY"]
+XAI_API_KEY = st.secrets["XAI_API_KEY"]
 try:
     from google import genai
     from google.genai import types
@@ -51,6 +51,13 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+try:
+    from xai_sdk import Client
+    from xai_sdk.chat import user, system
+    from xai_sdk import SearchParameters
+    XAI_AVAILABLE = True
+except ImportError:
+    XAI_AVAILABLE = False
 @dataclass
 class SearchResult:
     success: bool
@@ -327,7 +334,7 @@ class GeminiGroundingSearch:
             )
 
 class GPTResponsesSearch:
-    """Handles GPT-4 with OpenAI Responses API for web search"""
+    """Handles GPT-4o with OpenAI Responses API for web search"""
     # ...existing code...
 
     
@@ -421,7 +428,7 @@ class GPTResponsesSearch:
         return sources
     @staticmethod
     def search(query: str) -> SearchResult:
-        """Search using GPT-4 with OpenAI Responses API for web grounding"""
+        """Search using GPT-4o with OpenAI Responses API for web grounding"""
         start_time = time.time()
 
         if not OPENAI_AVAILABLE:
@@ -702,7 +709,7 @@ class GPTSerperSearch:
                     }
                 ],
                 temperature=0.1,
-                max_tokens=2048
+                #max_tokens=2048
             )
             
             response_time = time.time() - start_time
@@ -744,6 +751,182 @@ class GPTSerperSearch:
                 error=str(e),
                 has_grounding=False
             )
+class GrokLiveSearch:
+    """Handles Grok-4 with Live Search using official xAI SDK"""
+    
+    @staticmethod
+    def search(query: str) -> SearchResult:
+        """Search using Grok-4 with Live Search capability"""
+        start_time = time.time()
+        
+        if not XAI_AVAILABLE:
+            return SearchResult(
+                success=False,
+                response="",
+                sources=[],
+                search_queries=[],
+                model="xAI SDK Not Available",
+                timestamp=datetime.now().isoformat(),
+                response_time=time.time() - start_time,
+                error="xAI SDK not installed. Please install: pip install xai-sdk",
+                has_grounding=False
+            )
+        
+        try:
+            # Initialize xAI client
+            client = Client(api_key=XAI_API_KEY)
+            
+            # Enhanced query for Grok's live search
+            enhanced_query = f"""
+            Please provide comprehensive, current, and accurate information about: "{query}"
+            
+            I need detailed information including:
+            - Current facts and latest developments 
+            - Key insights and important details
+            - Recent changes or updates (prioritize 2024/2025 information)
+            - Multiple perspectives when relevant
+            - Specific examples and evidence
+            - User location context: India
+            
+            Use your live search capabilities to find the most up-to-date information available.
+            Please structure your response clearly and cite sources when available.
+            """
+            
+            # Configure search parameters for live search
+            search_params = SearchParameters(
+                mode="auto",  # Let Grok decide when to search
+                citations=True,  # Include citations
+                max_results=20,  # Maximum search results to consider
+                sources=["web", "x"]  # Search both web and X/Twitter
+            )
+            
+            # Make request with live search enabled
+            response = client.chat.completions.create(
+                model="grok-4-0709",  # Latest Grok-4 model
+                messages=[
+                    system("You are Grok, an AI assistant with real-time web search capabilities. Always provide accurate, current information and cite your sources when possible. Use your live search feature to find the most recent information available."),
+                    user(enhanced_query)
+                ],
+                temperature=0.1,
+                max_tokens=2048,
+                search_parameters=search_params  # Enable live search
+            )
+            
+            response_time = time.time() - start_time
+            
+            # Extract response text
+            response_text = ""
+            if hasattr(response, 'choices') and response.choices:
+                response_text = response.choices[0].message.content
+            elif hasattr(response, 'content'):
+                response_text = response.content
+            else:
+                response_text = str(response)
+            
+            # Extract sources from response and usage data
+            sources = []
+            search_queries = [query]
+            has_grounding = False
+            
+            # Extract usage information if available
+            if hasattr(response, 'usage') and hasattr(response.usage, 'num_sources_used'):
+                has_grounding = response.usage.num_sources_used > 0
+            
+            # Extract citations from response
+            if hasattr(response, 'citations') and response.citations:
+                for citation in response.citations:
+                    source = {
+                        'title': getattr(citation, 'title', 'Web Source'),
+                        'uri': getattr(citation, 'url', getattr(citation, 'uri', ''))
+                    }
+                    if source['uri']:
+                        sources.append(source)
+            else:
+                # Fallback: extract sources from response text
+                sources = GrokLiveSearch.extract_sources_from_response(response_text)
+            
+            # If no citations found but response seems to have web data, mark as grounded
+            if not has_grounding and (len(sources) > 0 or "according to" in response_text.lower() or "source:" in response_text.lower()):
+                has_grounding = True
+            
+            return SearchResult(
+                success=True,
+                response=response_text,
+                sources=sources, 
+                search_queries=search_queries,
+                model="Grok-4 with Live Search (xAI SDK)",
+                timestamp=datetime.now().isoformat(),
+                response_time=response_time,
+                has_grounding=has_grounding
+            )
+            
+        except Exception as e:
+            return SearchResult(
+                success=False,
+                response="",
+                sources=[],
+                search_queries=[],
+                model="Grok-4 Live Search (Error)",
+                timestamp=datetime.now().isoformat(), 
+                response_time=time.time() - start_time,
+                error=str(e),
+                has_grounding=False
+            )
+    
+    @staticmethod
+    def extract_sources_from_response(response_text: str) -> List[Dict[str, str]]:
+        """Extract sources from Grok response text as fallback"""
+        sources = []
+        
+        try:
+            import re
+            
+            # Common patterns for extracting sources from Grok responses
+            patterns = [
+                # URLs in markdown format [title](url)
+                r'\[([^\]]+)\]\((https?://[^\)]+)\)',
+                # Direct URLs
+                r'(https?://[^\s\]\)]+)',
+                # Source citations
+                r'Source:\s*([^\n]+)',
+                r'According to\s+([^,\n]+)',
+                r'From\s+([^,\n]+)',
+            ]
+            
+            found_urls = set()
+            
+            # Extract markdown links first (best quality)
+            markdown_links = re.findall(r'\[([^\]]+)\]\((https?://[^\)]+)\)', response_text)
+            for title, url in markdown_links:
+                if url not in found_urls and len(sources) < 10:
+                    sources.append({
+                        'title': title.strip(),
+                        'uri': url.strip()
+                    })
+                    found_urls.add(url)
+            
+            # Extract direct URLs
+            direct_urls = re.findall(r'https?://[^\s\]\)]+', response_text)
+            for url in direct_urls:
+                if url not in found_urls and len(sources) < 10:
+                    try:
+                        from urllib.parse import urlparse
+                        domain = urlparse(url).netloc
+                        title = domain.replace('www.', '').replace('.com', '').title()
+                    except:
+                        title = f"Web Source {len(sources) + 1}"
+                    
+                    sources.append({
+                        'title': title,
+                        'uri': url.strip()
+                    })
+                    found_urls.add(url)
+        
+        except Exception as e:
+            print(f"Error extracting sources from Grok response: {e}")
+        
+        return sources[:10]
+
 def add_citations_to_text(response_result: SearchResult) -> str:
     """Add inline citations to the response text"""
     if not response_result.has_grounding or not response_result.sources:
@@ -890,6 +1073,7 @@ def main():
     gemini_available = NEW_SDK_AVAILABLE or OLD_SDK_AVAILABLE
     openai_available = OPENAI_AVAILABLE
     serper_available = bool(SERPER_API_KEY and SERPER_API_KEY != "your-serper-api-key-here")
+    grok_available = XAI_AVAILABLE and bool(XAI_API_KEY and XAI_API_KEY != "your-xai-api-key-here")
     
     options = []
     if gemini_available:
@@ -898,6 +1082,10 @@ def main():
         options.append("GPT-4 with Responses API Web Search")
     if openai_available and serper_available:
         options.append("GPT-4o with Serper API Web Search")
+    if grok_available:
+        options.append("Grok-4 with Live Web Search")
+
+    
     
     if not options:
         st.error("❌ No AI models available. Please install required SDKs and configure API keys:")
@@ -935,6 +1123,11 @@ def main():
             st.error("❌ OpenAI SDK not available")
         elif not serper_available:
             st.error("❌ Serper API key not configured")
+    elif "Grok" in selected_model:
+        if grok_available:
+            st.success("✅ xAI Grok SDK available - Live search enabled")
+        else:
+            st.error("❌ xAI SDK not installed or API key not configured")
     
     # Sidebar
     st.sidebar.title("⚙️ Configuration")
@@ -951,6 +1144,10 @@ def main():
         st.sidebar.success("✅ Serper API Key: Configured")
     else:
         st.sidebar.warning("⚠️ Serper API Key: Not Configured")
+    if XAI_API_KEY and XAI_API_KEY != "your-xai-api-key-here":
+        st.sidebar.success("✅ xAI Grok API Key: Configured")
+    else:
+        st.sidebar.warning("⚠️ xAI Grok API Key: Not Configured")
     # Settings
     st.sidebar.subheader("⚙️ Settings")
     save_history = st.sidebar.checkbox("💾 Save History", True)
@@ -1011,6 +1208,13 @@ def main():
             
             with st.spinner(f"🔍 Searching with GPT-4o + Serper API..."):
                 result = GPTSerperSearch.search(search_query)
+        elif "Grok" in selected_model:  # Grok-4 with Live Search
+            if not grok_available:
+                st.error("❌ xAI Grok SDK not available or API key not configured")
+                return
+            
+            with st.spinner(f"🔍 Searching with Grok-4 Live Search..."):
+                result = GrokLiveSearch.search(search_query)
         
         st.divider()
         display_search_result(result)
@@ -1062,7 +1266,8 @@ def main():
         - Gemini: {'Available' if gemini_available else 'Not Available'}
         - GPT-4: {'Available' if openai_available else 'Not Available'}
         - GPT-4o Serper: {'Available' if (openai_available and serper_available) else 'Not Available'}
-        - Grounding: Both support web search
+        - Grok-4: {'Available' if grok_available else 'Not Available'}
+        - Grounding: All support web search
         - Current: {selected_model[:30]}...
         """)
     
@@ -1071,13 +1276,15 @@ def main():
         **💡 Tips:**
         - Use specific queries for better results
         - Include current year for recent info
-        - Both models provide real-time data
+        - All models provide real-time data
+        - Grok has access to X/Twitter data
+        - Live Search costs $25 per 1,000 sources
         - Check sources for verification
         """)
     
     st.markdown("---")
     st.markdown(
-        "**Powered by Gemini & GPT-4 with Web Search** | "
+        "**Powered by Gemini , GPT-4o,Grok-4 and Serper API with Web Search** | "
         "API Keys Embedded | "
         "Usage may incur costs"
     )
