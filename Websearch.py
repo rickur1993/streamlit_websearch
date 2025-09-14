@@ -1079,7 +1079,7 @@ def main():
     if gemini_available:
         options.append("Gemini 2.5/2.0 Flash with Google Search Grounding")
     if openai_available:
-        options.append("GPT-4 with Responses API Web Search")
+        options.append("GPT-4o with Responses API Web Search")
     if openai_available and serper_available:
         options.append("GPT-4o with Serper API Web Search")
     if grok_available:
