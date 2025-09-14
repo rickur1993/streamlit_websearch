@@ -820,16 +820,16 @@ class GrokLiveSearch:
                             {"role": "system", "content": "You are Grok with search capabilities."},
                             {"role": "user", "content": enhanced_query}
                         ],
-                        "temperature": 0.1,
-                        "search_parameters": {
-                                "mode": "auto",
-                                "return_citations": True,
-                                "max_results": 20,
-                                "sources": [
-                                    {"type": "web"}#,
+                        "temperature": 0.1#,
+                        #"search_parameters": {
+                                #"mode": "auto",
+                                #"return_citations": True,
+                                #"max_results": 20,
+                                #"sources": [
+                                    #{"type": "web"}#,
                                     #{"type": "x"}
-                                ]
-                                            }
+                                #]
+                                            #}
                             },
                     
                     timeout=180
