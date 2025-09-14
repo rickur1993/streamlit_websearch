@@ -805,7 +805,7 @@ class GrokLiveSearch:
                 model="grok-4-0709",  # Latest Grok-4 model
                 messages=[
                             {
-                                "content": f"""You are Grok, an AI assistant with real-time web search capabilities. Always provide accurate, current information and cite your sources when possible. Use your live search feature to find the most recent information available.
+                                f"""You are Grok, an AI assistant with real-time web search capabilities. Always provide accurate, current information and cite your sources when possible. Use your live search feature to find the most recent information available.
 
                         {enhanced_query}"""
                             }
