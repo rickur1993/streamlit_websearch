@@ -801,7 +801,7 @@ class GrokLiveSearch:
             )
             
             # Make request with live search enabled
-            response = Client.chat.completions.create(
+            response = client.completions.create(
                 model="grok-4-0709",  # Latest Grok-4 model
                 messages=[
                     {"role": "system", "content": "You are Grok, an AI assistant with real-time web search capabilities. Always provide accurate, current information and cite your sources when possible. Use your live search feature to find the most recent information available."},
