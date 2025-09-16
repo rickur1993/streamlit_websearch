@@ -801,54 +801,54 @@ class GrokLiveSearch:
             )
             
             # Make request with live search enabled
-            #response = client.chat.create(
-                #model="grok-4-0709",  # Latest Grok-4 model
-                #messages=enhanced_query,
-                #temperature=0.1,
-                #max_tokens=2048,
-                #search_parameters=search_params  # Enable live search
-            #)
-            response = requests.post(
-                "https://api.x.ai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {XAI_API_KEY}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": "grok-4-0709",  # Use the correct model name
-                    "messages": [
-                        {"role": "system", "content": "You are Grok, a helpful AI assistant with access to real-time information through web search. Use your search capabilities to provide current, accurate information."},
-                        {"role": "user", "content": enhanced_query}
-                    ],
-                    "stream": False,
-                    "temperature": 0.1,
+            response = client.chat.create(
+                    model="grok-4-0709",
+                    search_parameters=SearchParameters(
+                    mode="on",
+                    return_citations=True,
+                    ),
+                    )
+            #response = requests.post(
+                #"https://api.x.ai/v1/chat/completions",
+                #headers={
+                    #"Authorization": f"Bearer {XAI_API_KEY}",
+                    #"Content-Type": "application/json"
+                #},
+                #json={
+                    #"model": "grok-4-0709",  # Use the correct model name
+                    #"messages": [
+                        #{"role": "system", "content": "You are Grok, a helpful AI assistant with access to real-time information through web search. Use your search capabilities to provide current, accurate information."},
+                        #{"role": "user", "content": enhanced_query}
+                    #],
+                    #"stream": False,
+                    #"temperature": 0.1,
                     #"max_tokens": 4000,
-                    "tools": [{
-                        "type": "function",
-                        "function": {
-                            "name": "live_search",
-                            "description": "Search the web for current information",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "query": {
-                                        "type": "string",
-                                        "description": "The search query"
-                                    },
-                                    "sources": {
-                                        "type": "array",
-                                        "items": {"type": "string"},
-                                        "description": "Sources to search"
-                                    }
-                                },
-                                "required": ["query"]
-                            }
-                        }
-                    }],  # This enables live search
-                    "tool_choice": "auto"  # Let Grok decide when to search
-                },
-                timeout=180
-            )
+                    #"tools": [{
+                        #"type": "function",
+                        #"function": {
+                            #"name": "live_search",
+                            #"description": "Search the web for current information",
+                            #"parameters": {
+                                #"type": "object",
+                                #"properties": {
+                                    #"query": {
+                                        #"type": "string",
+                                        #"description": "The search query"
+                                    #},
+                                    #"sources": {
+                                        #"type": "array",
+                                        #"items": {"type": "string"},
+                                        #"description": "Sources to search"
+                                    #}
+                            # },
+                                #"required": ["query"]
+                            #}
+                        #}
+                    #}],  # This enables live search
+                    #"tool_choice": "auto"  # Let Grok decide when to search
+                #},
+                #timeout=180
+            #)
             if response.status_code != 200:
                 raise Exception(f"API request failed with status {response.status_code}: {response.text}")
 
