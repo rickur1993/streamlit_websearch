@@ -758,7 +758,7 @@ class GrokLiveSearch:
     def search(query: str) -> SearchResult:
         """Search using Grok-4 with Live Search capability"""
         start_time = time.time()
-        response_time=0.0
+        #response_time=0.0
         
         if not XAI_AVAILABLE:
             return SearchResult(
@@ -889,24 +889,24 @@ class GrokLiveSearch:
 
                         # Continue with your logic...
                         
-                response_time = time.time() - start_time
+            response_time = time.time() - start_time
                             
                             # Extract response text
                             # Extract response text from HTTP response
                             # Extract response text and sources directly from the SDK response object
-                response_text = getattr(response, "text", str(response))
-                sources = []
-                search_queries = [query]
-                has_grounding = False
+            response_text = getattr(response, "text", str(response))
+            sources = []
+            search_queries = [query]
+            has_grounding = False
 
                         # If the SDK provides citations or sources, extract them here
-                if hasattr(response, "citations"):
-                    for citation in response.citations:
-                        sources.append({
+            if hasattr(response, "citations"):
+                for citation in response.citations:
+                    sources.append({
                                     "title": citation.get("title", "Web Source"),
                                     "uri": citation.get("url", citation.get("uri", ""))
                                 })
-                    has_grounding = bool(sources)
+                has_grounding = bool(sources)
 
 # If no sources found, try to extract from response text
             if not sources:
