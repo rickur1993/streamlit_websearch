@@ -814,6 +814,7 @@ class GrokLiveSearch:
                     ),
                     temperature=0.1
                     )
+            
             #response = requests.post(
                 #"https://api.x.ai/v1/chat/completions",
                 #headers={
@@ -872,7 +873,7 @@ class GrokLiveSearch:
                 response_text = response.text
             else:
                 response_text = str(response)
-            print(response)
+            #print(response)
 
             sources = []
             search_queries = [query]
@@ -1138,7 +1139,8 @@ def display_search_result(result: SearchResult):
                 4. Try a simpler query first
                 """)
 
-
+    st.subheader("🛠️ Raw Model Response (Debug)")
+    st.code(str(result.raw_metadata if hasattr(result, "raw_metadata") else result.response), language="python")
 
 def main():
     # Header
