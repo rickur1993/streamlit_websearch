@@ -802,18 +802,15 @@ class GrokLiveSearch:
             )
             
             # Make request with live search enabled
-            from xai_sdk.chat import user
-            response = client.chat.create(
-                    model="grok-4-0709",
-                    messages=[
-                        user(enhanced_query)
-                    ],
-                    search_parameters=SearchParameters(
-                    mode="on",
-                    return_citations=True,
-                    ),
-                    temperature=0.1
-                    )
+            #from xai_sdk.chat import user
+            response = client.completions.create(
+                model="grok-4-0709",
+                messages=[
+                    {"role": "user", "content": enhanced_query}
+                ],
+                temperature=0.1,
+                search_parameters=search_params
+            )
             
             #response = requests.post(
                 #"https://api.x.ai/v1/chat/completions",
