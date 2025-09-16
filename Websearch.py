@@ -758,7 +758,7 @@ class GrokLiveSearch:
     def search(query: str) -> SearchResult:
         """Search using Grok-4 with Live Search capability"""
         start_time = time.time()
-        response=None
+        #response_time=0.0
         
         if not XAI_AVAILABLE:
             return SearchResult(
@@ -802,29 +802,18 @@ class GrokLiveSearch:
             )
             
             # Make request with live search enabled
-            #from xai_sdk.chat import user
-        try:
-            response = client.completions.create(
-                model="grok-4-0709",
-                messages=[
-                    {"role": "user", "content": enhanced_query}
-                ],
-                temperature=0.1,
-                search_parameters=search_params
-            )
-        except Exception as e:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="Grok-4 Live Search (Error)",
-                timestamp=datetime.now().isoformat(), 
-                response_time=time.time() - start_time,
-                error=str(e),
-                has_grounding=False,
-                raw_metadata=response
-            )
+            from xai_sdk.chat import user
+            response = client.chat.create(
+                    model="grok-4-0709",
+                    messages=[
+                        user(enhanced_query)
+                    ],
+                    search_parameters=SearchParameters(
+                    mode="on",
+                    return_citations=True,
+                    ),
+                    temperature=0.1
+                    )
             
             #response = requests.post(
                 #"https://api.x.ai/v1/chat/completions",
