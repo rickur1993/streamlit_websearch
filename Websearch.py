@@ -804,7 +804,7 @@ class GrokLiveSearch:
             response = client.chat.create(
                     model="grok-4-0709",
                     messages=[
-                        {"role": "grok", "content": enhanced_query}
+                        {"content": enhanced_query}
                     ],
                     search_parameters=SearchParameters(
                     mode="on",
