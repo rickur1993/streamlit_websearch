@@ -1137,8 +1137,8 @@ def display_search_result(result: SearchResult):
                 4. Try a simpler query first
                 """)
 
-    st.subheader("🛠️ Raw Model Response (Debug)")
-    st.code(str(result.raw_metadata if hasattr(result, "raw_metadata") else result.response), language="python")
+    #st.subheader("🛠️ Raw Model Response (Debug)")
+    #st.code(str(result.raw_metadata if hasattr(result, "raw_metadata") else result.response), language="python")
 
 def main():
     # Header
