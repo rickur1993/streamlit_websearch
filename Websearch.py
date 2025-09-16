@@ -873,55 +873,34 @@ class GrokLiveSearch:
             
             # Extract response text
             # Extract response text from HTTP response
-            
-            # Extract response text from HTTP response
-            response_text = ""
-
-            # Check if response_data is a string (direct text response)
-            if isinstance(response_data, str):
-                response_text = response_data
-            # Check if it's a dict with standard chat completion format
-            elif isinstance(response_data, dict):
-                if 'choices' in response_data and response_data['choices']:
-                    response_text = response_data['choices'][0].get('message', {}).get('content', '')
-                elif 'content' in response_data:
-                    response_text = response_data['content']
-                else:
-                    response_text = str(response_data)
-            else:
-                response_text = str(response_data)
-            
-            # Extract sources from response and usage data
+            # Extract response text and sources directly from the SDK response object
+            response_text = getattr(response, "text", str(response))
             sources = []
             search_queries = [query]
             has_grounding = False
+
+            # If the SDK provides citations or sources, extract them here
+            if hasattr(response, "citations"):
+                for citation in response.citations:
+                    sources.append({
+                        "title": citation.get("title", "Web Source"),
+                        "uri": citation.get("url", citation.get("uri", ""))
+                    })
+                has_grounding = bool(sources)
+
+# If no sources found, try to extract from response text
+            if not sources:
+                sources = GrokLiveSearch.extract_sources_from_response(response_text)
+
+            # If no citations found but response seems to have web data, mark as grounded
+            if not has_grounding and (len(sources) > 0 or "according to" in response_text.lower() or "source:" in response_text.lower()):
+                has_grounding = True
+                        # Extract response text from HTTP response
+                        
+                        # Extract sources from response and usage data
             
-            # Extract usage information if available
-            # Extract usage information if available
-            #usage = response_data.get('usage', {})
-            #has_grounding = usage.get('num_sources_used', 0) > 0
-            # Extract usage information if available
-            if isinstance(response_data, dict):
-                usage = response_data.get('usage', {})
-                has_grounding = usage.get('num_sources_used', 0) > 0
-            else:
-                has_grounding = False
             
-            # Extract citations from response
-            # Extract citations from response
-            #citations = response_data.get('citations', [])
-            # Extract citations from response
-            if isinstance(response_data, dict):
-                citations = response_data.get('citations', [])
-            else:
-                citations = []
-            for citation in citations:
-                source = {
-                    'title': citation.get('title', 'Web Source'),
-                    'uri': citation.get('url', citation.get('uri', ''))
-                }
-                if source['uri']:
-                    sources.append(source)
+            
             if not sources:
                 sources = GrokLiveSearch.extract_sources_from_response(response_text)
             
