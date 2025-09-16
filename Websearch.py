@@ -824,11 +824,11 @@ class GrokLiveSearch:
                     "temperature": 0.1,
                     #"max_tokens": 4000,
                     "tools": [{
-                                "type": "live_search",
-                                "sources": [
-                                    {"type": "web"}
-                                ]
-                            }],  # This enables live search
+                        "type": "live_search",
+                        "sources": [{"type": "web"}],
+                        "max_results": 10,
+                        "search_depth": "standard"
+                    }],  # This enables live search
                     "tool_choice": "auto"  # Let Grok decide when to search
                 },
                 timeout=180
