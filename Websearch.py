@@ -802,11 +802,11 @@ class GrokLiveSearch:
             )
             
             # Make request with live search enabled
-            from xai_sdk.chat import user
+            #from xai_sdk.chat import user
             response = client.chat.create(
                     model="grok-4-0709",
                     messages=[
-                        user(enhanced_query)
+        {"role": "USER", "content": enhanced_query}
                     ],
                     search_parameters=SearchParameters(
                     mode="on",
