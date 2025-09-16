@@ -938,6 +938,7 @@ class GrokLiveSearch:
                 timestamp=datetime.now().isoformat(),
                 response_time=response_time,
                 has_grounding=has_grounding
+                raw_metadata=response
             )
             
         except Exception as e:
@@ -951,6 +952,7 @@ class GrokLiveSearch:
                 response_time=time.time() - start_time,
                 error=str(e),
                 has_grounding=False
+                raw_metadata=response
             )
     
     @staticmethod
