@@ -809,31 +809,25 @@ class GrokLiveSearch:
                 #search_parameters=search_params  # Enable live search
             #)
             response = requests.post(
-                    "https://api.x.ai/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {XAI_API_KEY}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": "grok-4-0709",
-                        "messages": [
-                            {"role": "system", "content": "You are Grok with search capabilities."},
-                            {"role": "user", "content": enhanced_query}
-                        ],
-                        "temperature": 0.1#,
-                        #"search_parameters": {
-                                #"mode": "auto",
-                                #"return_citations": True,
-                                #"max_results": 20,
-                                #"sources": [
-                                    #{"type": "web"}#,
-                                    #{"type": "x"}
-                                #]
-                                            #}
-                            },
-                    
-                    timeout=180
-                )
+                "https://api.x.ai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {XAI_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "grok-beta",  # Use the correct model name
+                    "messages": [
+                        {"role": "system", "content": "You are Grok, a helpful AI assistant with access to real-time information through web search. Use your search capabilities to provide current, accurate information."},
+                        {"role": "user", "content": enhanced_query}
+                    ],
+                    "stream": False,
+                    "temperature": 0.1,
+                    "max_tokens": 4000,
+                    "tools": [{"type": "web_search"}],  # This enables live search
+                    "tool_choice": "auto"  # Let Grok decide when to search
+                },
+                timeout=180
+            )
             if response.status_code != 200:
                 raise Exception(f"API request failed with status {response.status_code}: {response.text}")
 
