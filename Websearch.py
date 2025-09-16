@@ -849,16 +849,25 @@ class GrokLiveSearch:
                 #},
                 #timeout=180
             #)
-            if response.status_code != 200:
-                raise Exception(f"API request failed with status {response.status_code}: {response.text}")
+            # After: response = client.chat.create(...)
 
-            if not response.text.strip():
-                raise Exception("Empty response from API")
+# Extract response text and sources directly from the SDK response object
+            response_text = getattr(response, "text", str(response))
+            sources = []
+            search_queries = [query]
+            has_grounding = False
 
-            try:
-                response_data = response.json()
-            except ValueError as e:
-                raise Exception(f"Invalid JSON response: {response.text[:500]}")
+            # If the SDK provides citations or sources, extract them here
+            # Example:
+            if hasattr(response, "citations"):
+                for citation in response.citations:
+                    sources.append({
+                        "title": citation.get("title", "Web Source"),
+                        "uri": citation.get("url", citation.get("uri", ""))
+                    })
+                has_grounding = bool(sources)
+
+            # Continue with your logic...
             
             response_time = time.time() - start_time
             
