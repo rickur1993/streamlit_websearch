@@ -824,10 +824,26 @@ class GrokLiveSearch:
                     "temperature": 0.1,
                     #"max_tokens": 4000,
                     "tools": [{
-                        "type": "live_search",
-                        "sources": [{"type": "web"}],
-                        "max_results": 10,
-                        "search_depth": "standard"
+                        "type": "function",
+                        "function": {
+                            "name": "live_search",
+                            "description": "Search the web for current information",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "query": {
+                                        "type": "string",
+                                        "description": "The search query"
+                                    },
+                                    "sources": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "Sources to search"
+                                    }
+                                },
+                                "required": ["query"]
+                            }
+                        }
                     }],  # This enables live search
                     "tool_choice": "auto"  # Let Grok decide when to search
                 },
