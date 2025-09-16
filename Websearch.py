@@ -872,6 +872,7 @@ class GrokLiveSearch:
                 response_text = response.text
             else:
                 response_text = str(response)
+            print(response)
 
             sources = []
             search_queries = [query]
