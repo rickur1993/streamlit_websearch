@@ -758,6 +758,7 @@ class GrokLiveSearch:
     def search(query: str) -> SearchResult:
         """Search using Grok-4 with Live Search capability"""
         start_time = time.time()
+        response_time=0.0
         
         if not XAI_AVAILABLE:
             return SearchResult(
@@ -888,10 +889,10 @@ class GrokLiveSearch:
                         # Continue with your logic...
                         
                 response_time = time.time() - start_time
-                        
-                        # Extract response text
-                        # Extract response text from HTTP response
-                        # Extract response text and sources directly from the SDK response object
+                            
+                            # Extract response text
+                            # Extract response text from HTTP response
+                            # Extract response text and sources directly from the SDK response object
                 response_text = getattr(response, "text", str(response))
                 sources = []
                 search_queries = [query]
