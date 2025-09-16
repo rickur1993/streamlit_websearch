@@ -815,7 +815,7 @@ class GrokLiveSearch:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "grok-3",  # Use the correct model name
+                    "model": "grok-4-0709",  # Use the correct model name
                     "messages": [
                         {"role": "system", "content": "You are Grok, a helpful AI assistant with access to real-time information through web search. Use your search capabilities to provide current, accurate information."},
                         {"role": "user", "content": enhanced_query}
