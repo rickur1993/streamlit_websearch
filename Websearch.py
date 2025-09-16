@@ -812,6 +812,19 @@ class GrokLiveSearch:
                 temperature=0.1,
                 search_parameters=search_params
             )
+        except Exception as e:
+            return SearchResult(
+                success=False,
+                response="",
+                sources=[],
+                search_queries=[],
+                model="Grok-4 Live Search (Error)",
+                timestamp=datetime.now().isoformat(), 
+                response_time=time.time() - start_time,
+                error=str(e),
+                has_grounding=False,
+                raw_metadata=response
+            )
             
             #response = requests.post(
                 #"https://api.x.ai/v1/chat/completions",
