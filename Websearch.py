@@ -937,7 +937,7 @@ class GrokLiveSearch:
                 model="Grok-4 with Live Search (xAI SDK)",
                 timestamp=datetime.now().isoformat(),
                 response_time=response_time,
-                has_grounding=has_grounding
+                has_grounding=has_grounding,
                 raw_metadata=response
             )
             
@@ -951,7 +951,7 @@ class GrokLiveSearch:
                 timestamp=datetime.now().isoformat(), 
                 response_time=time.time() - start_time,
                 error=str(e),
-                has_grounding=False
+                has_grounding=False,
                 raw_metadata=response
             )
     
