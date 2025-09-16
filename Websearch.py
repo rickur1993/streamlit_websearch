@@ -802,11 +802,11 @@ class GrokLiveSearch:
             )
             
             # Make request with live search enabled
-            #from xai_sdk.chat import user
+            from xai_sdk.chat import user
             response = client.chat.create(
                     model="grok-4-0709",
                     messages=[
-                        {"role": "ROLE_USER", "content": enhanced_query}
+                        user(enhanced_query)
                     ],
                     search_parameters=SearchParameters(
                     mode="on",
@@ -861,16 +861,12 @@ class GrokLiveSearch:
 # Extract response text and sources directly from the SDK response object
             # Extract Grok response text (actual answer)
             response_text = ""
-            if hasattr(response, "output") and response.output:
-                # If output is a list, find the message content
-                if isinstance(response.output, list):
-                    for item in response.output:
-                        if hasattr(item, "content") and hasattr(item.content, "text"):
-                            response_text += item.content.text
-                elif hasattr(response.output, "text"):
-                    response_text = response.output.text
-            elif hasattr(response, "text"):
-                response_text = response.text
+            if hasattr(response, "choices") and response.choices:
+                choice = response.choices[0]
+                if hasattr(choice, "message") and hasattr(choice.message, "content"):
+                    response_text = choice.message.content
+                elif hasattr(choice, "text"):
+                    response_text = choice.text
             else:
                 response_text = str(response)
             #print(response)
