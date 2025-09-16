@@ -815,15 +815,15 @@ class GrokLiveSearch:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "grok-beta",  # Use the correct model name
+                    "model": "grok-4-0709",  # Use the correct model name
                     "messages": [
                         {"role": "system", "content": "You are Grok, a helpful AI assistant with access to real-time information through web search. Use your search capabilities to provide current, accurate information."},
                         {"role": "user", "content": enhanced_query}
                     ],
                     "stream": False,
                     "temperature": 0.1,
-                    "max_tokens": 4000,
-                    "tools": [{"type": "web_search"}],  # This enables live search
+                    #"max_tokens": 4000,
+                    "tools": [{"type": "live_search"}],  # This enables live search
                     "tool_choice": "auto"  # Let Grok decide when to search
                 },
                 timeout=180
