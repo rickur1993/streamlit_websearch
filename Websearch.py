@@ -857,29 +857,21 @@ class GrokLiveSearch:
             # After: response = client.chat.create(...)
 
 # Extract response text and sources directly from the SDK response object
-            response_text = getattr(response, "text", str(response))
-            sources = []
-            search_queries = [query]
-            has_grounding = False
+            # Extract Grok response text (actual answer)
+            response_text = ""
+            if hasattr(response, "output") and response.output:
+                # If output is a list, find the message content
+                if isinstance(response.output, list):
+                    for item in response.output:
+                        if hasattr(item, "content") and hasattr(item.content, "text"):
+                            response_text += item.content.text
+                elif hasattr(response.output, "text"):
+                    response_text = response.output.text
+            elif hasattr(response, "text"):
+                response_text = response.text
+            else:
+                response_text = str(response)
 
-            # If the SDK provides citations or sources, extract them here
-            # Example:
-            if hasattr(response, "citations"):
-                for citation in response.citations:
-                    sources.append({
-                        "title": citation.get("title", "Web Source"),
-                        "uri": citation.get("url", citation.get("uri", ""))
-                    })
-                has_grounding = bool(sources)
-
-            # Continue with your logic...
-            
-            response_time = time.time() - start_time
-            
-            # Extract response text
-            # Extract response text from HTTP response
-            # Extract response text and sources directly from the SDK response object
-            response_text = getattr(response, "text", str(response))
             sources = []
             search_queries = [query]
             has_grounding = False
@@ -892,6 +884,27 @@ class GrokLiveSearch:
                         "uri": citation.get("url", citation.get("uri", ""))
                     })
                 has_grounding = bool(sources)
+
+                        # Continue with your logic...
+                        
+                        response_time = time.time() - start_time
+                        
+                        # Extract response text
+                        # Extract response text from HTTP response
+                        # Extract response text and sources directly from the SDK response object
+                        response_text = getattr(response, "text", str(response))
+                        sources = []
+                        search_queries = [query]
+                        has_grounding = False
+
+                        # If the SDK provides citations or sources, extract them here
+                        if hasattr(response, "citations"):
+                            for citation in response.citations:
+                                sources.append({
+                                    "title": citation.get("title", "Web Source"),
+                                    "uri": citation.get("url", citation.get("uri", ""))
+                                })
+                            has_grounding = bool(sources)
 
 # If no sources found, try to extract from response text
             if not sources:
