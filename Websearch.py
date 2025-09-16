@@ -758,7 +758,7 @@ class GrokLiveSearch:
     def search(query: str) -> SearchResult:
         """Search using Grok-4 with Live Search capability"""
         start_time = time.time()
-        #response_time=0.0
+        response=None
         
         if not XAI_AVAILABLE:
             return SearchResult(
@@ -803,6 +803,7 @@ class GrokLiveSearch:
             
             # Make request with live search enabled
             #from xai_sdk.chat import user
+        try:
             response = client.completions.create(
                 model="grok-4-0709",
                 messages=[
