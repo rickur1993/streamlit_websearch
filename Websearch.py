@@ -1004,6 +1004,221 @@ class GrokLiveSearch:
             print(f"Error extracting sources from Grok response: {e}")
         
         return sources[:10]
+    
+class GPTChatCompletionsWebSearch:
+    """Handles GPT-4o with Chat Completions API using function calling for web search"""
+    
+    @staticmethod
+    def search_web_with_serper(query: str, num_results: int = 10) -> Dict:
+        """Search the web using Serper API - reuse from GPTSerperSearch"""
+        try:
+            url = "https://google.serper.dev/search"
+            payload = {
+                'q': query,
+                'num': num_results,
+                'gl': 'in',  # Country code for India
+                'hl': 'en'   # Language
+            }
+            headers = {
+                'X-API-KEY': SERPER_API_KEY,
+                'Content-Type': 'application/json'
+            }
+            
+            response = requests.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        
+        except Exception as e:
+            print(f"Serper API error: {e}")
+            return {}
+    
+    @staticmethod
+    def web_search_function(query: str) -> str:
+        """Function to be called by GPT-4o for web search"""
+        search_data = GPTChatCompletionsWebSearch.search_web_with_serper(query)
+        
+        if not search_data:
+            return "No search results found."
+        
+        # Format results more concisely for function response
+        results = []
+        
+        # Add organic results
+        if 'organic' in search_data:
+            for result in search_data['organic'][:5]:  # Limit to top 5 for function response
+                title = result.get('title', 'No title')
+                snippet = result.get('snippet', 'No description')
+                link = result.get('link', '')
+                results.append(f"Title: {title}\nURL: {link}\nSnippet: {snippet}\n")
+        
+        # Add knowledge graph if available
+        if 'knowledgeGraph' in search_data:
+            kg = search_data['knowledgeGraph']
+            if 'description' in kg:
+                results.append(f"Knowledge Graph: {kg.get('title', '')}: {kg.get('description', '')}\n")
+        
+        # Add answer box if available
+        if 'answerBox' in search_data:
+            answer = search_data['answerBox']
+            if 'answer' in answer:
+                results.append(f"Featured Answer: {answer.get('answer', '')}\n")
+        
+        return "\n".join(results[:10])  # Return top results
+    
+    @staticmethod
+    def search(query: str) -> SearchResult:
+        """Search using GPT-4o with Chat Completions API and function calling"""
+        start_time = time.time()
+        
+        if not OPENAI_AVAILABLE:
+            return SearchResult(
+                success=False,
+                response="",
+                sources=[],
+                search_queries=[],
+                model="OpenAI SDK Not Available",
+                timestamp=datetime.now().isoformat(),
+                response_time=time.time() - start_time,
+                error="OpenAI SDK not installed. Please install: pip install openai",
+                has_grounding=False
+            )
+        
+        try:
+            client = openai.OpenAI(api_key=OPENAI_API_KEY)
+            
+            # Define the web search function
+            tools = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "web_search",
+                        "description": "Search the web for current information using Google search",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {
+                                    "type": "string",
+                                    "description": "The search query to find current information"
+                                }
+                            },
+                            "required": ["query"]
+                        }
+                    }
+                }
+            ]
+            
+            # Enhanced system message
+            system_message = """You are a helpful research assistant with access to web search capabilities. When a user asks for information that might benefit from current web data, use the web_search function to find up-to-date information. Always provide comprehensive, accurate responses based on the search results and cite your sources when possible."""
+            
+            # Enhanced user query
+            enhanced_query = f"""
+            Please provide comprehensive, current, and accurate information about: "{query}"
+            
+            I need detailed information including:
+            - Current facts and latest developments
+            - Key insights and important details  
+            - Recent changes or updates (prioritize 2024/2025 information)
+            - Multiple perspectives when relevant
+            - Specific examples and evidence
+            - User location context: India
+            
+            Please use web search to find the most current information available and structure your response clearly.
+            """
+            
+            # First API call - let GPT decide if it needs to search
+            messages = [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": enhanced_query}
+            ]
+            
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",  # Let GPT decide when to use tools
+                temperature=0.1,
+                max_tokens=4000
+            )
+            
+            # Store sources and search queries
+            sources = []
+            search_queries = [query]
+            
+            # Check if GPT wants to use function calling
+            response_message = response.choices[0].message
+            tool_calls = response_message.tool_calls
+            
+            if tool_calls:
+                # GPT decided to search - execute function calls
+                messages.append(response_message)  # Add GPT's message with tool calls
+                
+                for tool_call in tool_calls:
+                    if tool_call.function.name == "web_search":
+                        # Parse the search query from function call
+                        function_args = json.loads(tool_call.function.arguments)
+                        search_query = function_args.get("query", query)
+                        search_queries.append(search_query)
+                        
+                        # Execute the web search
+                        search_results = GPTChatCompletionsWebSearch.web_search_function(search_query)
+                        
+                        # Add function response to messages
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": search_results
+                        })
+                        
+                        # Extract sources from the original search data
+                        search_data = GPTChatCompletionsWebSearch.search_web_with_serper(search_query)
+                        if 'organic' in search_data:
+                            for result in search_data['organic'][:10]:
+                                title = result.get('title', 'Web Source')
+                                uri = result.get('link', '')
+                                if uri:
+                                    sources.append({'title': title, 'uri': uri})
+                
+                # Second API call with search results
+                final_response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=messages,
+                    temperature=0.1,
+                    max_tokens=4000
+                )
+                
+                response_text = final_response.choices[0].message.content
+                has_grounding = True
+                
+            else:
+                # GPT didn't use function calling - use original response
+                response_text = response_message.content
+                has_grounding = False
+            
+            response_time = time.time() - start_time
+            
+            return SearchResult(
+                success=True,
+                response=response_text,
+                sources=sources,
+                search_queries=list(set(search_queries)),  # Remove duplicates
+                model="GPT-4o Chat Completions with Function Calling",
+                timestamp=datetime.now().isoformat(),
+                response_time=response_time,
+                has_grounding=has_grounding
+            )
+        
+        except Exception as e:
+            return SearchResult(
+                success=False,
+                response="",
+                sources=[],
+                search_queries=[],
+                model="GPT-4o Chat Completions (Error)",
+                timestamp=datetime.now().isoformat(),
+                response_time=time.time() - start_time,
+                error=str(e),
+                has_grounding=False
+            )
 
 def add_citations_to_text(response_result: SearchResult) -> str:
     """Add inline citations to the response text"""
@@ -1163,6 +1378,9 @@ def main():
         options.append("GPT-4o with Serper API Web Search")
     if grok_available:
         options.append("Grok-4 with Live Web Search")
+    if openai_available:
+
+        options.append("GPT-4o with Chat Completions API")  # Add this line
 
     
     
@@ -1294,7 +1512,19 @@ def main():
             
             with st.spinner(f"🔍 Searching with Grok-4 Live Search..."):
                 result = GrokLiveSearch.search(search_query)
-        
+
+        elif "Function Calling" in selected_model:  # GPT-4o Chat Completions
+            if not openai_available:
+                st.error("❌ OpenAI SDK not available")
+                return
+            
+            if not serper_available:
+                st.error("❌ Serper API key not configured")
+                return
+            
+            with st.spinner(f"🔍 Searching with GPT-4o Chat Completions..."):
+                result = GPTChatCompletionsWebSearch.search(search_query)
+                
         st.divider()
         display_search_result(result)
         
