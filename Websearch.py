@@ -72,7 +72,7 @@ class SearchResult:
     raw_metadata: Optional[Dict] = None
 
 class GeminiGroundingSearch:
-    """Handles Gemini with proper Google Search Grounding using official methods"""
+    """Optimized Gemini search with reduced latency using only Gemini 2.5 Flash"""
     
     @staticmethod
     def get_sdk_info():
@@ -94,113 +94,73 @@ class GeminiGroundingSearch:
     
     @staticmethod
     def search_with_new_sdk(query: str) -> SearchResult:
-        """Search using the new google-genai SDK with proper grounding (Official Method)"""
+        """Optimized search using new SDK with Gemini 2.5 Flash only"""
         start_time = time.time()
         try:
-            # Configure the client with API key
+            # Configure client once
             client = genai.Client(api_key=GEMINI_API_KEY)
             
-            # Define the grounding tool (official method)
-            grounding_tool = types.Tool(
-                google_search=types.GoogleSearch()
-            )
+            # Simplified grounding tool
+            grounding_tool = types.Tool(google_search=types.GoogleSearch())
             
-            # Configure generation settings
+            # Minimal config for speed
             config = types.GenerateContentConfig(
                 tools=[grounding_tool],
                 response_modalities=['TEXT']
             )
             
-            # Enhanced prompt for better results
-            enhanced_query = f"""
-            Please provide comprehensive, current, and accurate information about: "{query}"
+            # Concise prompt to reduce processing time
+            optimized_query = f"""Answer this query with current, accurate information: {query}
             
-            I need detailed information including:
-            - Current facts and latest developments
-            - Key insights and important details
-            - Recent changes or updates (prioritize 2024/2025 information)
-            - User location is India
-            - Multiple perspectives when relevant
-            - Specific examples and evidence
+            Provide key facts and recent developments. Keep response focused and well-structured."""
             
-            Please structure your response clearly with proper organization.
-            """
-            
-            # Try different models in order of preference (only 2.5 and 2.0)
-            models_to_try = [
-                "gemini-2.5-flash",
-                "gemini-2.5-pro", 
-                "gemini-2.0-flash-exp"
-            ]
-            
-            response = None
-            model_used = None
-            last_error = None
-            
-            for model_name in models_to_try:
-                try:
-                    # Make the request with grounding
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=enhanced_query,
-                        config=config
-                    )
-                    model_used = f"{model_name} (New SDK Grounding)"
-                    break
-                except Exception as model_error:
-                    last_error = str(model_error)
-                    continue
-            
-            if response is None:
-                raise Exception(f"All models failed. Last error: {last_error}")
+            # Use only Gemini 2.5 Flash (fastest model)
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=optimized_query,
+                config=config
+            )
             
             response_time = time.time() - start_time
+            model_used = "gemini-2.5-flash (New SDK)"
             
-            # Extract grounding metadata (official structure)
+            # Fast metadata extraction with error handling
             sources = []
             search_queries = []
             has_grounding = False
-            raw_metadata = None
             
             try:
-                if (hasattr(response, 'candidates') and 
-                    response.candidates and 
+                if (response.candidates and 
                     hasattr(response.candidates[0], 'grounding_metadata')):
                     
-                    grounding_metadata = response.candidates[0].grounding_metadata
+                    metadata = response.candidates[0].grounding_metadata
                     has_grounding = True
-                    raw_metadata = grounding_metadata
                     
-                    # Extract search queries used
-                    if hasattr(grounding_metadata, 'web_search_queries'):
-                        search_queries = list(grounding_metadata.web_search_queries)
+                    # Extract search queries
+                    if hasattr(metadata, 'web_search_queries'):
+                        search_queries = list(metadata.web_search_queries)
                     
-                    # Extract grounding chunks (sources)
-                    if hasattr(grounding_metadata, 'grounding_chunks'):
-                        for chunk in grounding_metadata.grounding_chunks:
-                            if hasattr(chunk, 'web') and chunk.web:
-                                source_info = {
+                    # Extract sources efficiently
+                    if hasattr(metadata, 'grounding_chunks'):
+                        for chunk in metadata.grounding_chunks:
+                            if hasattr(chunk, 'web') and chunk.web and chunk.web.uri:
+                                sources.append({
                                     'title': getattr(chunk.web, 'title', 'Unknown'),
-                                    'uri': getattr(chunk.web, 'uri', ''),
-                                }
-                                if source_info['uri']:  # Only add if URI exists
-                                    sources.append(source_info)
-                
-            except Exception as metadata_error:
-                # Grounding metadata extraction failed, but response succeeded
+                                    'uri': chunk.web.uri
+                                })
+            except Exception:
+                # Silently continue if metadata extraction fails
                 pass
             
-            # Get response text
+            # Extract response text efficiently
             response_text = ""
             if hasattr(response, 'text'):
                 response_text = response.text
-            elif hasattr(response, 'candidates') and response.candidates:
-                candidate = response.candidates[0]
-                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                    response_text = ''.join([
-                        part.text for part in candidate.content.parts 
-                        if hasattr(part, 'text')
-                    ])
+            elif response.candidates and response.candidates[0].content.parts:
+                response_text = ''.join([
+                    part.text for part in response.candidates[0].content.parts 
+                    if hasattr(part, 'text')
+                ])
             
             return SearchResult(
                 success=True,
@@ -210,8 +170,7 @@ class GeminiGroundingSearch:
                 model=model_used,
                 timestamp=datetime.now().isoformat(),
                 response_time=response_time,
-                has_grounding=has_grounding,
-                raw_metadata=raw_metadata
+                has_grounding=has_grounding
             )
             
         except Exception as e:
@@ -220,7 +179,7 @@ class GeminiGroundingSearch:
                 response="",
                 sources=[],
                 search_queries=[],
-                model="Gemini (Error)",
+                model="gemini-2.5-flash (Error)",
                 timestamp=datetime.now().isoformat(),
                 response_time=time.time() - start_time,
                 error=str(e),
@@ -229,64 +188,46 @@ class GeminiGroundingSearch:
     
     @staticmethod
     def search_with_legacy_sdk(query: str) -> SearchResult:
-        """Fallback search using legacy google-generativeai SDK"""
+        """Optimized legacy SDK search with Gemini 2.5 Flash only"""
         start_time = time.time()
         try:
             genai_old.configure(api_key=GEMINI_API_KEY)
             
-            enhanced_prompt = f"""
-            Please provide comprehensive, current information about: "{query}"
-            Include recent developments, key facts, and detailed insights.
-            Structure your response clearly with proper organization.
-            """
+            # Concise prompt for speed
+            prompt = f"Provide current, accurate information about: {query}"
             
-            model_used = "Legacy SDK"
+            # Use only Gemini 2.5 Flash
+            model = genai_old.GenerativeModel("gemini-2.5-flash")
             
-            # Try grounding with legacy SDK if available - only 2.5/2.0 models
-            if TOOL_CONFIG_AVAILABLE:
-                try:
-                    # Try Gemini 2.5 first
-                    try:
-                        model = genai_old.GenerativeModel("gemini-2.5-flash")
-                        response = model.generate_content(
-                            enhanced_prompt,
-                            tools=[{'google_search_retrieval': {}}]
-                        )
-                        model_used = "Gemini 2.5 Flash (Legacy Grounding)"
-                    except:
-                        # Fallback to 2.0
-                        model = genai_old.GenerativeModel("gemini-2.0-flash-exp")
-                        response = model.generate_content(
-                            enhanced_prompt,
-                            tools=[{'google_search_retrieval': {}}]
-                        )
-                        model_used = "Gemini 2.0 Flash (Legacy Grounding)"
-                    
-                except Exception as e:
-                    # Fallback to basic model
-                    model = genai_old.GenerativeModel("gemini-2.5-flash")
-                    response = model.generate_content(enhanced_prompt)
-                    model_used = "Gemini 2.5 Flash (Legacy Basic)"
-            else:
-                # Basic model without grounding
-                model = genai_old.GenerativeModel("gemini-2.5-flash")
-                response = model.generate_content(enhanced_prompt)
-                model_used = "Gemini 2.5 Flash (No Grounding)"
+            # Try grounding first, fallback to basic
+            try:
+                if TOOL_CONFIG_AVAILABLE:
+                    response = model.generate_content(
+                        prompt,
+                        tools=[{'google_search_retrieval': {}}]
+                    )
+                    model_used = "gemini-2.5-flash (Legacy Grounding)"
+                else:
+                    response = model.generate_content(prompt)
+                    model_used = "gemini-2.5-flash (Legacy Basic)"
+            except Exception:
+                # Fallback to basic
+                response = model.generate_content(prompt)
+                model_used = "gemini-2.5-flash (Legacy Basic)"
             
             response_time = time.time() - start_time
             
-            # Try to extract sources from legacy response
+            # Fast source extraction
             sources = []
             search_queries = []
             has_grounding = False
             
             try:
-                if (hasattr(response, 'candidates') and response.candidates and 
+                if (response.candidates and 
                     hasattr(response.candidates[0], 'grounding_metadata')):
                     has_grounding = True
-                    # Legacy source extraction logic here
-                    pass
-            except:
+                    # Add legacy source extraction if needed
+            except Exception:
                 pass
             
             return SearchResult(
@@ -306,7 +247,7 @@ class GeminiGroundingSearch:
                 response="",
                 sources=[],
                 search_queries=[],
-                model="Legacy SDK (Error)",
+                model="gemini-2.5-flash (Legacy Error)",
                 timestamp=datetime.now().isoformat(),
                 response_time=time.time() - start_time,
                 error=str(e),
