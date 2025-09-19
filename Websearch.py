@@ -108,12 +108,6 @@ class GeminiGroundingSearch:
                 tools=[grounding_tool],
                 response_modalities=['TEXT'],
                 # Disable reasoning to reduce latency
-                generation_config=types.GenerationConfig(
-                    max_output_tokens=1000,  # Limit response length
-                    temperature=0.1,  # Reduce randomness for faster processing
-                    top_k=1,  # Use only top result
-                    top_p=0.8
-                )
             )
             
             # Concise prompt to reduce processing time
@@ -125,8 +119,15 @@ class GeminiGroundingSearch:
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=optimized_query,
-                config=config
+                config=config,
+                generation_config=types.GenerationConfig(
+                    max_output_tokens=1000,
+                    temperature=0.1,
+                    top_k=1,
+                    top_p=0.8
+                )
             )
+            
             
             response_time = time.time() - start_time
             model_used = "gemini-2.5-flash (New SDK)"
