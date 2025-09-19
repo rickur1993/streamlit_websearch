@@ -101,12 +101,19 @@ class GeminiGroundingSearch:
             client = genai.Client(api_key=GEMINI_API_KEY)
             
             # Simplified grounding tool
-            grounding_tool = types.Tool(google_search=types.GoogleSearch(max_results=1,))
+            grounding_tool = types.Tool(google_search=types.GoogleSearch())
             
             # Minimal config for speed
             config = types.GenerateContentConfig(
                 tools=[grounding_tool],
-                response_modalities=['TEXT']
+                response_modalities=['TEXT'],
+                # Disable reasoning to reduce latency
+                generation_config=types.GenerationConfig(
+                    max_output_tokens=1000,  # Limit response length
+                    temperature=0.1,  # Reduce randomness for faster processing
+                    top_k=1,  # Use only top result
+                    top_p=0.8
+                )
             )
             
             # Concise prompt to reduce processing time
@@ -142,6 +149,7 @@ class GeminiGroundingSearch:
                     
                     # Extract sources efficiently
                     if hasattr(metadata, 'grounding_chunks'):
+                        limited_chunks = list(metadata.grounding_chunks)[:15]
                         for chunk in metadata.grounding_chunks:
                             if hasattr(chunk, 'web') and chunk.web and chunk.web.uri:
                                 sources.append({
