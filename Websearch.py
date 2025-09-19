@@ -163,7 +163,7 @@ class GeminiGroundingSearch:
                                 uri = chunk.web.uri
                                 
                                 # If we haven't seen this source before and haven't reached limit
-                                if uri not in source_to_chunks and unique_sources_count < 15:
+                                if uri not in source_to_chunks and unique_sources_count < 100:
                                     source_to_chunks[uri] = {
                                         'title': getattr(chunk.web, 'title', 'Unknown'),
                                         'uri': uri,
