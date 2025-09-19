@@ -101,7 +101,7 @@ class GeminiGroundingSearch:
             client = genai.Client(api_key=GEMINI_API_KEY)
             
             # Simplified grounding tool
-            grounding_tool = types.Tool(google_search=types.GoogleSearch())
+            grounding_tool = types.Tool(google_search=types.GoogleSearch(max_results=1))
             
             # Minimal config for speed
             config = types.GenerateContentConfig(
