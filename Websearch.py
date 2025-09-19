@@ -143,14 +143,47 @@ class GeminiGroundingSearch:
                         search_queries = list(metadata.web_search_queries)
                     
                     # Extract sources efficiently
+                    # if hasattr(metadata, 'grounding_chunks'):
+                    #     limited_chunks = list(metadata.grounding_chunks)[:15]
+                    #     for chunk in metadata.grounding_chunks:
+                    #         if hasattr(chunk, 'web') and chunk.web and chunk.web.uri:
+                    #             sources.append({
+                    #                 'title': getattr(chunk.web, 'title', 'Unknown'),
+                    #                 'uri': chunk.web.uri
+                    #             })
                     if hasattr(metadata, 'grounding_chunks'):
-                        limited_chunks = list(metadata.grounding_chunks)[:15]
+                        total_chunks = len(list(metadata.grounding_chunks))
+                        
+                        # Group chunks by source and limit to 15 unique sources
+                        source_to_chunks = {}
+                        unique_sources_count = 0
+                        
                         for chunk in metadata.grounding_chunks:
                             if hasattr(chunk, 'web') and chunk.web and chunk.web.uri:
-                                sources.append({
-                                    'title': getattr(chunk.web, 'title', 'Unknown'),
-                                    'uri': chunk.web.uri
-                                })
+                                uri = chunk.web.uri
+                                
+                                # If we haven't seen this source before and haven't reached limit
+                                if uri not in source_to_chunks and unique_sources_count < 15:
+                                    source_to_chunks[uri] = {
+                                        'title': getattr(chunk.web, 'title', 'Unknown'),
+                                        'uri': uri,
+                                        'chunks': []
+                                    }
+                                    unique_sources_count += 1
+                                
+                                # Add chunk to this source (if source is in our limited set)
+                                if uri in source_to_chunks:
+                                    source_to_chunks[uri]['chunks'].append(chunk)
+                        
+                        # Extract sources from the limited set
+                        for source_data in source_to_chunks.values():
+                            sources.append({
+                                'title': source_data['title'],
+                                'uri': source_data['uri']
+                            })
+                        
+                        print(f"Debug: Total chunks: {total_chunks}, Unique sources found: {len(source_to_chunks)}, Total chunks from limited sources: {sum(len(s['chunks']) for s in source_to_chunks.values())}")
+                        
             except Exception:
                 # Silently continue if metadata extraction fails
                 pass
