@@ -119,13 +119,7 @@ class GeminiGroundingSearch:
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=optimized_query,
-                config=config,
-                generation_config=types.GenerationConfig(
-                    max_output_tokens=1000,
-                    temperature=0.1,
-                    top_k=1,
-                    top_p=0.8
-                )
+                config=config
             )
             
             
