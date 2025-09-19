@@ -1164,26 +1164,66 @@ class GPTChatCompletionsWebSearch:
                 has_grounding=False
             )
 
+# def add_citations_to_text(response_result: SearchResult) -> str:
+#     """Add inline citations to the response text"""
+#     if not response_result.has_grounding or not response_result.sources:
+#         return response_result.response
+    
+#     text = response_result.response
+    
+#     # Simple citation approach - add numbered references at the end
+#     if response_result.sources:
+#         citations = []
+#         for i, source in enumerate(response_result.sources, 1):
+#             title = source.get('title', f'Source {i}')
+#             uri = source.get('uri', '')
+#             if uri:
+#                 citations.append(f"[{i}] {title}: {uri}")
+        
+#         if citations:
+#             text += "\n\n**Sources:**\n" + "\n".join(citations)
+    
+#     return text
 def add_citations_to_text(response_result: SearchResult) -> str:
-    """Add inline citations to the response text"""
+    """Add inline citations to the response text for Gemini only"""
     if not response_result.has_grounding or not response_result.sources:
         return response_result.response
     
+    # Only apply inline citations to Gemini models
+    if "gemini" not in response_result.model.lower():
+        return response_result.response
+    
     text = response_result.response
+    sources = response_result.sources
     
-    # Simple citation approach - add numbered references at the end
-    if response_result.sources:
-        citations = []
-        for i, source in enumerate(response_result.sources, 1):
-            title = source.get('title', f'Source {i}')
-            uri = source.get('uri', '')
-            if uri:
-                citations.append(f"[{i}] {title}: {uri}")
+    if not sources:
+        return text
+    
+    # Create source mapping
+    source_map = {}
+    for i, source in enumerate(sources, 1):
+        title = source.get('title', f'Source {i}')
+        uri = source.get('uri', '')
+        if uri:
+            source_map[i] = f"[{title}]({uri})"
+    
+    # Split text into sentences and add inline citations
+    import re
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    
+    # Add citations to sentences (distribute evenly across response)
+    if len(sentences) > 1 and source_map:
+        citation_interval = max(1, len(sentences) // len(source_map))
+        source_idx = 1
         
-        if citations:
-            text += "\n\n**Sources:**\n" + "\n".join(citations)
+        for i in range(0, len(sentences), citation_interval):
+            if source_idx <= len(source_map) and i < len(sentences):
+                # Add citation at end of sentence
+                sentences[i] = sentences[i].rstrip() + f" {source_map[source_idx]}"
+                source_idx += 1
     
-    return text
+    return " ".join(sentences)
+
 
 def display_search_result(result: SearchResult):
     """Display search results with proper grounding information"""
@@ -1217,7 +1257,17 @@ def display_search_result(result: SearchResult):
         st.markdown(response_with_citations)
         
         # Sources section (if available)
-        if result.sources:
+        # if result.sources:
+        #     st.subheader("🔗 Sources & References")
+        #     for i, source in enumerate(result.sources, 1):
+        #         title = source.get('title', f'Source {i}')
+        #         uri = source.get('uri', '')
+        #         if uri:
+        #             st.markdown(f"**{i}.** [{title}]({uri})")
+        #         else:
+        #             st.markdown(f"**{i}.** {title}")
+        # Sources section (only for non-Gemini models)
+        if result.sources and "gemini" not in result.model.lower():
             st.subheader("🔗 Sources & References")
             for i, source in enumerate(result.sources, 1):
                 title = source.get('title', f'Source {i}')
