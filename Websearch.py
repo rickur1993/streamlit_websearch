@@ -1184,6 +1184,45 @@ class GPTChatCompletionsWebSearch:
 #             text += "\n\n**Sources:**\n" + "\n".join(citations)
     
 #     return text
+# def add_citations_to_text(response_result: SearchResult) -> str:
+#     """Add inline citations to the response text for Gemini only"""
+#     if not response_result.has_grounding or not response_result.sources:
+#         return response_result.response
+    
+#     # Only apply inline citations to Gemini models
+#     if "gemini" not in response_result.model.lower():
+#         return response_result.response
+    
+#     text = response_result.response
+#     sources = response_result.sources
+    
+#     if not sources:
+#         return text
+    
+#     # Create source mapping
+#     source_map = {}
+#     for i, source in enumerate(sources, 1):
+#         title = source.get('title', f'Source {i}')
+#         uri = source.get('uri', '')
+#         if uri:
+#             source_map[i] = f"[{title}]({uri})"
+    
+#     # Split text into sentences and add inline citations
+#     import re
+#     sentences = re.split(r'(?<=[.!?])\s+', text)
+    
+#     # Add citations to sentences (distribute evenly across response)
+#     if len(sentences) > 1 and source_map:
+#         citation_interval = max(1, len(sentences) // len(source_map))
+#         source_idx = 1
+        
+#         for i in range(0, len(sentences), citation_interval):
+#             if source_idx <= len(source_map) and i < len(sentences):
+#                 # Add citation at end of sentence
+#                 sentences[i] = sentences[i].rstrip() + f" {source_map[source_idx]}"
+#                 source_idx += 1
+    
+#     return " ".join(sentences)
 def add_citations_to_text(response_result: SearchResult) -> str:
     """Add inline citations to the response text for Gemini only"""
     if not response_result.has_grounding or not response_result.sources:
@@ -1199,30 +1238,21 @@ def add_citations_to_text(response_result: SearchResult) -> str:
     if not sources:
         return text
     
-    # Create source mapping
-    source_map = {}
-    for i, source in enumerate(sources, 1):
-        title = source.get('title', f'Source {i}')
-        uri = source.get('uri', '')
-        if uri:
-            source_map[i] = f"[{title}]({uri})"
+    # Split into paragraphs
+    paragraphs = text.split('\n\n')
     
-    # Split text into sentences and add inline citations
-    import re
-    sentences = re.split(r'(?<=[.!?])\s+', text)
+    # Add citations to paragraphs (one source per substantial paragraph)
+    source_idx = 0
+    for i, paragraph in enumerate(paragraphs):
+        if len(paragraph.strip()) > 100 and source_idx < len(sources):  # Only substantial paragraphs
+            source = sources[source_idx]
+            title = source.get('title', f'Source {source_idx + 1}')
+            uri = source.get('uri', '')
+            if uri:
+                paragraphs[i] = paragraph.rstrip() + f" [{title}]({uri})"
+            source_idx += 1
     
-    # Add citations to sentences (distribute evenly across response)
-    if len(sentences) > 1 and source_map:
-        citation_interval = max(1, len(sentences) // len(source_map))
-        source_idx = 1
-        
-        for i in range(0, len(sentences), citation_interval):
-            if source_idx <= len(source_map) and i < len(sentences):
-                # Add citation at end of sentence
-                sentences[i] = sentences[i].rstrip() + f" {source_map[source_idx]}"
-                source_idx += 1
-    
-    return " ".join(sentences)
+    return '\n\n'.join(paragraphs)
 
 
 def display_search_result(result: SearchResult):
