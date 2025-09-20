@@ -626,7 +626,7 @@ class AzureAIAgentsSearch:
             # You need to replace 'your-agent-id' with your actual agent ID from Azure AI Foundry
             # Get this from the Agents section in Azure AI Foundry portal
             run_data = {
-                "assistant_id": "your-agent-id",  # Replace with your actual agent ID
+                "assistant_id": AZURE_AGENT_ID,  # Replace with your actual agent ID
                 "instructions": STANDARD_SYSTEM_PROMPT,
                 "tools": [
                     {
