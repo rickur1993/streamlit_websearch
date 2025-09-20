@@ -556,8 +556,26 @@ class GPTResponsesSearch:
                 has_grounding=False
             )
 
+import subprocess
+import json
+
 class AzureAIAgentsSearch:
     """Handles Azure AI Foundry Agents with Bing Search grounding using proper Agent Service API"""
+    
+    @staticmethod
+    def get_azure_token():
+        """Get Azure Entra ID token for AI Foundry Agent Service"""
+        try:
+            # Get token with correct audience for AI Foundry
+            result = subprocess.run([
+                'az', 'account', 'get-access-token', 
+                '--resource', 'https://ai.azure.com'
+            ], capture_output=True, text=True, check=True)
+            
+            token_data = json.loads(result.stdout)
+            return token_data.get('accessToken')
+        except Exception as e:
+            raise Exception(f"Failed to get Azure token: {e}. Run 'az login' first.")
     
     @staticmethod
     def search(query: str) -> SearchResult:
@@ -565,7 +583,7 @@ class AzureAIAgentsSearch:
         start_time = time.time()
         
         # Check if Azure AI Foundry credentials are available
-        if not AZURE_AI_FOUNDRY_ENDPOINT or not AZURE_AI_FOUNDRY_KEY or not AZURE_AGENT_ID:
+        if not AZURE_AI_FOUNDRY_ENDPOINT or not AZURE_AGENT_ID:
             return SearchResult(
                 success=False, 
                 response="", 
@@ -574,21 +592,27 @@ class AzureAIAgentsSearch:
                 model="Azure AI Foundry Agent Not Configured",
                 timestamp=datetime.now().isoformat(),
                 response_time=time.time() - start_time,
-                error="Azure AI Foundry endpoint, key, or agent ID not configured",
+                error="Azure AI Foundry endpoint or agent ID not configured",
                 has_grounding=False
             )
         
         try:
-            # CORRECTED: Step 1 - Create a thread using proper authentication
-            thread_url = f"{AZURE_AI_FOUNDRY_ENDPOINT}/agents/threads"
+            # Get Entra ID token
+            access_token = AzureAIAgentsSearch.get_azure_token()
+            
+            # CORRECTED: Proper endpoint format and authentication
+            # Endpoint should be: https://<service>.services.ai.azure.com/api/projects/<project>
+            # Remove '/agents' from the path - it's not needed
+            thread_url = f"{AZURE_AI_FOUNDRY_ENDPOINT}/threads"
+            
             headers = {
-                "api-key": AZURE_AI_FOUNDRY_KEY,  # FIXED: Use api-key instead of Bearer token
+                "Authorization": f"Bearer {access_token}",  # FIXED: Use Bearer token with Entra ID
                 "Content-Type": "application/json",
                 "User-Agent": "StreamlitApp/1.0"
             }
             
-            # Use the latest stable API version
-            thread_params = {"api-version": "2024-07-01-preview"}  # Updated API version
+            # CORRECTED: Use proper API version
+            thread_params = {"api-version": "2025-05-01"}  # GA version
             
             thread_response = requests.post(
                 thread_url,
@@ -617,7 +641,7 @@ I need detailed information including:
 Please use web search to find the most current information and cite your sources."""
 
             # Step 2: Add message to thread
-            message_url = f"{AZURE_AI_FOUNDRY_ENDPOINT}/agents/threads/{thread_id}/messages"
+            message_url = f"{AZURE_AI_FOUNDRY_ENDPOINT}/threads/{thread_id}/messages"
             message_data = {
                 "role": "user",
                 "content": enhanced_query
@@ -634,9 +658,10 @@ Please use web search to find the most current information and cite your sources
                 raise Exception(f"Failed to create message: {message_response.text}")
             
             # Step 3: Create and run the agent
-            run_url = f"{AZURE_AI_FOUNDRY_ENDPOINT}/agents/threads/{thread_id}/runs"
+            # CORRECTED: Use 'assistant_id' not 'agent_id' in the API call
+            run_url = f"{AZURE_AI_FOUNDRY_ENDPOINT}/threads/{thread_id}/runs"
             run_data = {
-                "agent_id": AZURE_AGENT_ID,
+                "assistant_id": AZURE_AGENT_ID,  # FIXED: Use assistant_id
                 "instructions": f"{STANDARD_SYSTEM_PROMPT} Use Bing search to find current information when needed."
             }
             
@@ -654,8 +679,8 @@ Please use web search to find the most current information and cite your sources
             run_id = run_data_response.get("id")
             
             # Step 4: Poll for completion
-            run_status_url = f"{AZURE_AI_FOUNDRY_ENDPOINT}/agents/threads/{thread_id}/runs/{run_id}"
-            max_polls = 60  # Increase timeout for web search
+            run_status_url = f"{AZURE_AI_FOUNDRY_ENDPOINT}/threads/{thread_id}/runs/{run_id}"
+            max_polls = 60
             poll_count = 0
             
             while poll_count < max_polls:
@@ -679,14 +704,14 @@ Please use web search to find the most current information and cite your sources
                 elif status == "requires_action":
                     print(f"Run requires action: {status_data}")
                 
-                time.sleep(3)  # Increase polling interval for web search
+                time.sleep(3)
                 poll_count += 1
             
             if poll_count >= max_polls:
                 raise Exception("Run timed out waiting for completion")
             
             # Step 5: Get messages from thread
-            messages_url = f"{AZURE_AI_FOUNDRY_ENDPOINT}/agents/threads/{thread_id}/messages"
+            messages_url = f"{AZURE_AI_FOUNDRY_ENDPOINT}/threads/{thread_id}/messages"
             messages_response = requests.get(
                 messages_url,
                 headers=headers,
@@ -728,7 +753,7 @@ Please use web search to find the most current information and cite your sources
                                             "uri": url_match.group()
                                         })
                                         has_grounding = True
-                    break  # Find the most recent assistant message
+                    break
             
             # Check if web search was actually used
             if "search" in response_text.lower() or sources or "current" in response_text.lower():
@@ -737,7 +762,7 @@ Please use web search to find the most current information and cite your sources
             return SearchResult(
                 success=True,
                 response=response_text or "No response generated",
-                sources=sources[:10],  # Limit to 10 sources
+                sources=sources[:10],
                 search_queries=search_queries,
                 model=f"Azure AI Foundry Agent ({AZURE_AGENT_ID}) with Bing Grounding",
                 timestamp=datetime.now().isoformat(),
@@ -757,6 +782,7 @@ Please use web search to find the most current information and cite your sources
                 error=str(e),
                 has_grounding=False
             )
+
 
 
 def add_citations_to_text(response_result: SearchResult) -> str:
