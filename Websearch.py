@@ -599,74 +599,48 @@ class AzureAIAgentsSearch:
             Please structure your response clearly with proper organization and cite your sources.
             """
 
-            # Option 1: Try using existing agent ID if provided
-            if AZURE_AGENT_ID and AZURE_AGENT_ID != "your-agent-id":
-                try:
-                    # Use existing assistant
-                    assistant_id = AZURE_AGENT_ID
-                    
-                    # Create thread
-                    thread = client.beta.threads.create()
-                    
-                    # Add message
-                    client.beta.threads.messages.create(
-                        thread_id=thread.id,
-                        role="user",
-                        content=enhanced_query
-                    )
-                    
-                    # Run the assistant
-                    run = client.beta.threads.runs.create(
-                        thread_id=thread.id,
-                        assistant_id=assistant_id
-                    )
-                    
-                except Exception as e:
-                    print(f"Failed to use existing assistant: {e}")
-                    raise e
-            
-            else:
-                # Option 2: Create a new assistant with Bing search capabilities
-                assistant = client.beta.assistants.create(
-                    name="Web Search Assistant",
-                    instructions=STANDARD_SYSTEM_PROMPT,
-                    model=AZURE_MODEL_DEPLOYMENT,
-                    tools=[
-                        {
-                            "type": "function",
-                            "function": {
-                                "name": "web_search",
-                                "description": "Search the web for current information using Bing",
-                                "parameters": {
-                                    "type": "object",
-                                    "properties": {
-                                        "query": {
-                                            "type": "string",
-                                            "description": "The search query"
-                                        }
-                                    },
-                                    "required": ["query"]
-                                }
+            # Always create a new assistant
+            assistant = client.beta.assistants.create(
+                name="Web Search Assistant",
+                instructions=STANDARD_SYSTEM_PROMPT,
+                model=AZURE_MODEL_DEPLOYMENT,
+                tools=[
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "web_search",
+                            "description": "Search the web for current information using Bing",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "query": {
+                                        "type": "string",
+                                        "description": "The search query"
+                                    }
+                                },
+                                "required": ["query"]
                             }
                         }
-                    ]
-                )
-                
-                # Create thread
-                thread = client.beta.threads.create()
-                
-                # Add message
-                client.beta.threads.messages.create(
-                    thread_id=thread.id,
-                    role="user",
-                    content=enhanced_query
-                )
-                
-                # Run the assistant
-                run = client.beta.threads.runs.create(
-                    thread_id=thread.id,
-                    assistant_id=assistant.id
-                )
+                    }
+                ]
+            )
+
+            # Create thread
+            thread = client.beta.threads.create()
+
+            # Add message
+            client.beta.threads.messages.create(
+                thread_id=thread.id,
+                role="user",
+                content=enhanced_query
+            )
+
+            # Run the assistant
+            run = client.beta.threads.runs.create(
+                thread_id=thread.id,
+                assistant_id=assistant.id
+            )
+           
 
             # Wait for completion
             max_wait = 60  # seconds
