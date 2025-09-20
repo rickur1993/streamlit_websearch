@@ -806,4 +806,37 @@ def main():
                     st.rerun()
         
         if st.sidebar.button("🗑️ Clear History"):
-            st.session_
+            st.session_state.search_history = []
+            st.rerun()
+    
+    # Footer
+    st.divider()
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(f"""
+        **🔍 Available Models:**
+        - Gemini: {'Available' if gemini_available else 'Not Available'}
+        - GPT-4o: {'Available' if openai_available else 'Not Available'}
+        - Grounding: Both support web search
+        - Current: {selected_model[:30]}...
+        """)
+    
+    with col2:
+        st.markdown("""
+        **💡 Tips:**
+        - Use specific queries for better results
+        - Include current year for recent info
+        - Both models provide real-time data
+        - Check sources for verification
+        """)
+    
+    st.markdown("---")
+    st.markdown(
+        "**Powered by Gemini and GPT-4o with Web Search** | "
+        "API Keys Embedded | "
+        "Usage may incur costs"
+    )
+
+if __name__ == "__main__":
+    main()
