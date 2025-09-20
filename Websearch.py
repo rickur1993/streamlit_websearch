@@ -612,16 +612,27 @@ class AzureAIAgentsSearch:
                     }
                 ],
                 tools=[
-                    {
-                        "type": "bing_search",
-                        "bing_search": {
-                            "connection_id": "default"
-                        }
-                    }
-                ],
+                            {
+                                "type": "function",
+                                "function": {
+                                    "name": "bing_search",
+                                    "description": "Search the web using Bing to get current information",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "query": {
+                                                "type": "string",
+                                                "description": "The search query to execute"
+                                            }
+                                        },
+                                        "required": ["query"]
+                                    }
+                                }
+                            }
+                        ],
                 tool_choice="auto",
-                temperature=0.1,
-                max_tokens=2000
+                temperature=0.1#,
+                #max_tokens=2000
             )
 
             response_time = time.time() - start_time
@@ -644,7 +655,7 @@ class AzureAIAgentsSearch:
                         
                         # Extract search queries from tool calls
                         for tool_call in message.tool_calls:
-                            if tool_call.type == "bing_search":
+                            if (tool_call.type == "function" and tool_call.function.name == "bing_search"):
                                 try:
                                     function_args = json.loads(tool_call.function.arguments)
                                     if "query" in function_args:
