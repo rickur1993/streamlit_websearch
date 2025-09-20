@@ -1,7 +1,7 @@
-streamlit
-openai
-python-dotenv
-google-genai
-requests
-google-generativeai
-xai-sdk
+streamlit>=1.28.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+google-genai>=0.7.0
+openai>=1.12.0
+azure-ai-projects>=1.0.0b4
+azure-identity>=1.15.0
