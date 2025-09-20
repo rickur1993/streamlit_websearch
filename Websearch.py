@@ -9,10 +9,16 @@ from dotenv import load_dotenv
 import os
 import requests
 
-# Try importing the new Google GenAI SDK first (recommended)
+# API Keys from Streamlit secrets
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+AZURE_AI_FOUNDRY_ENDPOINT = st.secrets["AZURE_AI_FOUNDRY_ENDPOINT"]
+AZURE_AI_FOUNDRY_KEY = st.secrets["AZURE_AI_FOUNDRY_KEY"]
+AZURE_OPENAI_ENDPOINT = st.secrets["AZURE_OPENAI_ENDPOINT"]
+AZURE_OPENAI_KEY = st.secrets["AZURE_OPENAI_KEY"]
+AZURE_MODEL_DEPLOYMENT = st.secrets["AZURE_MODEL_DEPLOYMENT"]
 
+# Try importing the new Google GenAI SDK first (recommended)
 try:
     from google import genai
     from google.genai import types
@@ -40,7 +46,15 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
 
-print(OPENAI_AVAILABLE)
+# Try importing Azure OpenAI SDK
+try:
+    from openai import AzureOpenAI
+    AZURE_OPENAI_AVAILABLE = True
+except ImportError:
+    AZURE_OPENAI_AVAILABLE = False
+
+print(f"OpenAI Available: {OPENAI_AVAILABLE}")
+print(f"Azure OpenAI Available: {AZURE_OPENAI_AVAILABLE}")
 
 # Page configuration
 st.set_page_config(
@@ -62,6 +76,9 @@ class SearchResult:
     error: Optional[str] = None
     has_grounding: bool = False
     raw_metadata: Optional[Dict] = None
+
+# Standard system prompt for consistency
+STANDARD_SYSTEM_PROMPT = """You are a helpful assistant with access to current web information. Always provide accurate, up-to-date information with proper citations when available."""
 
 class GeminiGroundingSearch:
     """Optimized Gemini search with reduced latency using only Gemini 2.5 Flash"""
@@ -102,10 +119,18 @@ class GeminiGroundingSearch:
                 # Disable reasoning to reduce latency
             )
             
-            # Concise prompt to reduce processing time
-            optimized_query = f"""Answer this query with current, accurate information: {query}
-            
-            Provide key facts and recent developments. Keep response focused and well-structured."""
+            # Enhanced prompt for consistency
+            optimized_query = f"""Please provide comprehensive, current, and accurate information about: "{query}"
+
+            I need detailed information including:
+            - Current facts and latest developments
+            - Key insights and important details
+            - Recent changes or updates (prioritize 2024/2025 information)
+            - Multiple perspectives when relevant
+            - Specific examples and evidence
+            - User location is India
+
+            Please structure your response clearly with proper organization and cite your sources."""
             
             # Use only Gemini 2.5 Flash (fastest model)
             response = client.models.generate_content(
@@ -213,8 +238,18 @@ class GeminiGroundingSearch:
         try:
             genai_old.configure(api_key=GEMINI_API_KEY)
             
-            # Concise prompt for speed
-            prompt = f"Provide current, accurate information about: {query}"
+            # Enhanced prompt for consistency
+            prompt = f"""Please provide comprehensive, current, and accurate information about: "{query}"
+
+            I need detailed information including:
+            - Current facts and latest developments
+            - Key insights and important details
+            - Recent changes or updates (prioritize 2024/2025 information)
+            - Multiple perspectives when relevant
+            - Specific examples and evidence
+            - User location is India
+
+            Please structure your response clearly with proper organization and cite your sources."""
             
             # Use only Gemini 2.5 Flash
             model = genai_old.GenerativeModel("gemini-2.5-flash")
@@ -424,7 +459,7 @@ class GPTResponsesSearch:
             # Use the Responses API
             response = client.responses.create(
                 model="gpt-4o",
-                instructions="You are a helpful assistant with access to current web information. Always provide accurate, up-to-date information with proper citations when available.",
+                instructions=STANDARD_SYSTEM_PROMPT,
                 input=enhanced_query,
                 tools=[{"type": "web_search"}],
                 temperature=0.1
@@ -514,6 +549,165 @@ class GPTResponsesSearch:
                 sources=[],
                 search_queries=[],
                 model="GPT-4 Responses API (Error)",
+                timestamp=datetime.now().isoformat(),
+                response_time=time.time() - start_time,
+                error=str(e),
+                has_grounding=False
+            )
+
+class AzureAIAgentsSearch:
+    """Handles Azure AI Agents with Bing Search grounding"""
+    
+    @staticmethod
+    def search(query: str) -> SearchResult:
+        """Search using Azure AI Agents with Bing grounding"""
+        start_time = time.time()
+
+        if not AZURE_OPENAI_AVAILABLE:
+            return SearchResult(
+                success=False,
+                response="",
+                sources=[],
+                search_queries=[],
+                model="Azure OpenAI SDK Not Available",
+                timestamp=datetime.now().isoformat(),
+                response_time=time.time() - start_time,
+                error="Azure OpenAI SDK not installed. Please install: pip install openai",
+                has_grounding=False
+            )
+
+        try:
+            # Initialize Azure OpenAI client
+            client = AzureOpenAI(
+                azure_endpoint=AZURE_OPENAI_ENDPOINT,
+                api_key=AZURE_OPENAI_KEY,
+                api_version="2024-12-01-preview"  # Use latest API version for agents
+            )
+
+            enhanced_query = f"""
+            Please provide comprehensive, current, and accurate information about: "{query}"
+
+            I need detailed information including:
+            - Current facts and latest developments
+            - Key insights and important details
+            - Recent changes or updates (prioritize 2024/2025 information)
+            - Multiple perspectives when relevant
+            - Specific examples and evidence
+            - User location is India
+
+            Please structure your response clearly with proper organization and cite your sources.
+            """
+
+            # Create a completion with web search tools
+            response = client.chat.completions.create(
+                model=AZURE_MODEL_DEPLOYMENT,
+                messages=[
+                    {
+                        "role": "system", 
+                        "content": STANDARD_SYSTEM_PROMPT
+                    },
+                    {
+                        "role": "user",
+                        "content": enhanced_query
+                    }
+                ],
+                tools=[
+                    {
+                        "type": "bing_search",
+                        "bing_search": {
+                            "connection_id": "default"
+                        }
+                    }
+                ],
+                tool_choice="auto",
+                temperature=0.1,
+                max_tokens=2000
+            )
+
+            response_time = time.time() - start_time
+
+            # Extract response text
+            response_text = ""
+            sources = []
+            search_queries = [query]
+            has_grounding = False
+
+            try:
+                # Extract main response
+                if response.choices and response.choices[0].message:
+                    message = response.choices[0].message
+                    response_text = message.content or ""
+                    
+                    # Check for tool calls (indicates web search was used)
+                    if hasattr(message, 'tool_calls') and message.tool_calls:
+                        has_grounding = True
+                        
+                        # Extract search queries from tool calls
+                        for tool_call in message.tool_calls:
+                            if tool_call.type == "bing_search":
+                                try:
+                                    function_args = json.loads(tool_call.function.arguments)
+                                    if "query" in function_args:
+                                        search_queries.append(function_args["query"])
+                                except:
+                                    pass
+                
+                # Try to extract sources from response content
+                # Azure AI Agents may include citations in the response text
+                # Look for common citation patterns
+                import re
+                citation_patterns = [
+                    r'\[(.*?)\]\((https?://[^\)]+)\)',  # [title](url)
+                    r'Source: \[(.*?)\]\((https?://[^\)]+)\)',  # Source: [title](url)
+                    r'Reference: (https?://[^\s]+)',  # Reference: url
+                ]
+                
+                for pattern in citation_patterns:
+                    matches = re.findall(pattern, response_text)
+                    for match in matches:
+                        if isinstance(match, tuple) and len(match) == 2:
+                            title, url = match
+                            sources.append({
+                                'title': title or 'Web Source',
+                                'uri': url
+                            })
+                        elif isinstance(match, str) and match.startswith('http'):
+                            sources.append({
+                                'title': 'Web Source',
+                                'uri': match
+                            })
+                
+                # Remove duplicate sources
+                unique_sources = []
+                seen_urls = set()
+                for source in sources:
+                    if source['uri'] not in seen_urls:
+                        unique_sources.append(source)
+                        seen_urls.add(source['uri'])
+                sources = unique_sources[:10]  # Limit to 10 sources
+
+            except Exception as parsing_error:
+                print(f"Azure parsing error: {parsing_error}")
+                response_text = str(response)
+
+            return SearchResult(
+                success=True,
+                response=response_text,
+                sources=sources,
+                search_queries=list(set(search_queries)),  # Remove duplicates
+                model=f"Azure AI Agents ({AZURE_MODEL_DEPLOYMENT}) with Bing Search",
+                timestamp=datetime.now().isoformat(),
+                response_time=response_time,
+                has_grounding=has_grounding
+            )
+
+        except Exception as e:
+            return SearchResult(
+                success=False,
+                response="",
+                sources=[],
+                search_queries=[],
+                model="Azure AI Agents (Error)",
                 timestamp=datetime.now().isoformat(),
                 response_time=time.time() - start_time,
                 error=str(e),
@@ -631,10 +825,20 @@ def display_search_result(result: SearchResult):
                 st.markdown("""
                 **📦 OpenAI SDK Installation Required:**
                 
-                For GPT-4 Responses API:
+                For GPT-4 Responses API or Azure AI Agents:
                 ```bash
                 pip install openai
                 ```
+                """)
+            
+            elif "AZURE" in error_str:
+                st.markdown("""
+                **🔧 Azure Configuration Issues:**
+                1. Check Azure OpenAI endpoint URL
+                2. Verify Azure OpenAI API key
+                3. Confirm model deployment name
+                4. Ensure Bing Search is enabled in Azure AI Foundry
+                5. Check API version compatibility
                 """)
             
             elif "API_KEY" in error_str or "INVALID" in error_str or "AUTHENTICATION" in error_str:
@@ -664,8 +868,8 @@ def display_search_result(result: SearchResult):
 
 def main():
     # Header
-    st.title("🔍 Web Search Comparison")
-    st.markdown("**Choose between Gemini 2.5/2.0 Flash Grounding or GPT-4o Responses API**")
+    st.title("🔍 Advanced Web Search Comparison")
+    st.markdown("**Choose between Gemini 2.5 Flash, GPT-4o Responses API, or Azure AI Agents with Bing Search**")
     
     # Model Selection
     st.subheader("🤖 Select AI Model")
@@ -673,12 +877,15 @@ def main():
     # Check SDK availability
     gemini_available = NEW_SDK_AVAILABLE or OLD_SDK_AVAILABLE
     openai_available = OPENAI_AVAILABLE
+    azure_available = AZURE_OPENAI_AVAILABLE
     
     options = []
     if gemini_available:
-        options.append("Gemini 2.5/2.0 Flash with Google Search Grounding")
+        options.append("Gemini 2.5 Flash with Google Search Grounding")
     if openai_available:
         options.append("GPT-4o with Responses API Web Search")
+    if azure_available:
+        options.append("Azure AI Agents with Bing Search Grounding")
     
     if not options:
         st.error("❌ No AI models available. Please install required SDKs and configure API keys:")
@@ -709,6 +916,11 @@ def main():
             st.success("✅ OpenAI SDK available - GPT-4o with web search enabled")
         else:
             st.error("❌ OpenAI SDK not available")
+    elif "Azure AI Agents" in selected_model:
+        if azure_available:
+            st.success(f"✅ Azure OpenAI SDK available - {AZURE_MODEL_DEPLOYMENT} with Bing Search enabled")
+        else:
+            st.error("❌ Azure OpenAI SDK not available")
     
     # Sidebar
     st.sidebar.title("⚙️ Configuration")
@@ -720,6 +932,23 @@ def main():
         st.sidebar.success("✅ OpenAI API Key: Configured")
     else:
         st.sidebar.warning("⚠️ OpenAI API Key: Not Configured")
+    
+    if AZURE_OPENAI_KEY and AZURE_OPENAI_KEY != "your-azure-openai-key-here":
+        st.sidebar.success("✅ Azure OpenAI API Key: Configured")
+    else:
+        st.sidebar.warning("⚠️ Azure OpenAI API Key: Not Configured")
+    
+    if AZURE_AI_FOUNDRY_KEY and AZURE_AI_FOUNDRY_KEY != "your-azure-ai-foundry-key-here":
+        st.sidebar.success("✅ Azure AI Foundry Key: Configured")
+    else:
+        st.sidebar.warning("⚠️ Azure AI Foundry Key: Not Configured")
+    
+    # Azure Configuration Details
+    if "Azure" in selected_model:
+        st.sidebar.subheader("🔧 Azure Configuration")
+        st.sidebar.info(f"**Endpoint:** {AZURE_OPENAI_ENDPOINT[:30]}...")
+        st.sidebar.info(f"**Model:** {AZURE_MODEL_DEPLOYMENT}")
+        st.sidebar.info(f"**AI Foundry:** {AZURE_AI_FOUNDRY_ENDPOINT[:30]}...")
     
     # Settings
     st.sidebar.subheader("⚙️ Settings")
@@ -768,6 +997,18 @@ def main():
             
             with st.spinner(f"🔍 Searching with GPT-4o Responses API..."):
                 result = GPTResponsesSearch.search(search_query)
+        
+        elif "Azure AI Agents" in selected_model:  # Azure AI Agents
+            if not azure_available:
+                st.error("❌ Azure OpenAI SDK not available")
+                return
+            
+            if AZURE_OPENAI_KEY == "your-azure-openai-key-here":
+                st.error("❌ Azure API keys not configured in code")
+                return
+            
+            with st.spinner(f"🔍 Searching with Azure AI Agents..."):
+                result = AzureAIAgentsSearch.search(search_query)
                 
         st.divider()
         display_search_result(result)
@@ -818,7 +1059,8 @@ def main():
         **🔍 Available Models:**
         - Gemini: {'Available' if gemini_available else 'Not Available'}
         - GPT-4o: {'Available' if openai_available else 'Not Available'}
-        - Grounding: Both support web search
+        - Azure AI: {'Available' if azure_available else 'Not Available'}
+        - Grounding: All models support web search
         - Current: {selected_model[:30]}...
         """)
     
@@ -827,13 +1069,14 @@ def main():
         **💡 Tips:**
         - Use specific queries for better results
         - Include current year for recent info
-        - Both models provide real-time data
+        - All models provide real-time data
         - Check sources for verification
+        - Azure uses Bing Search grounding
         """)
     
     st.markdown("---")
     st.markdown(
-        "**Powered by Gemini and GPT-4o with Web Search** | "
+        "**Powered by Gemini, GPT-4o, and Azure AI Agents with Web Search** | "
         "API Keys Embedded | "
         "Usage may incur costs"
     )
