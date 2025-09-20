@@ -634,6 +634,8 @@ class AzureAIAgentsSearch:
                 temperature=0.1#,
                 #max_tokens=2000
             )
+            st.subheader("🛠️ Raw Azure Response (Debug)")
+            st.code(str(response), language="python")       
 
             response_time = time.time() - start_time
 
@@ -648,7 +650,8 @@ class AzureAIAgentsSearch:
                 if response.choices and response.choices[0].message:
                     message = response.choices[0].message
                     response_text = message.content or ""
-                    
+                    if not response_text:
+                        st.warning("⚠️ No response content returned from Azure AI Agents.")
                     # Check for tool calls (indicates web search was used)
                     if hasattr(message, 'tool_calls') and message.tool_calls:
                         has_grounding = True
