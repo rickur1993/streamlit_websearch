@@ -582,9 +582,8 @@ class AzureAIAgentsSearch:
             # Step 1: Create a new thread
             thread_url = f"{AZURE_AI_FOUNDRY_ENDPOINT}/agents/threads"
             headers = {
-                "Authorization": f"Bearer {AZURE_AI_FOUNDRY_KEY}",
-                "Content-Type": "application/json",
-                "api-version": "2024-12-01-preview"
+                "api-key": AZURE_AI_FOUNDRY_KEY,  # Use api-key instead of Bearer token
+                "Content-Type": "application/json"
             }
 
             thread_response = requests.post(thread_url, headers=headers, json={})
