@@ -8,15 +8,11 @@ import json
 from dotenv import load_dotenv
 import os
 import requests
-#load_dotenv("API.env")
-#GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-#OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Try importing the new Google GenAI SDK first (recommended)
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-SERPER_API_KEY = st.secrets["SERPER_API_KEY"]
-XAI_API_KEY = st.secrets["XAI_API_KEY"]
+
 try:
     from google import genai
     from google.genai import types
@@ -43,7 +39,9 @@ try:
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
+
 print(OPENAI_AVAILABLE)
+
 # Page configuration
 st.set_page_config(
     page_title="External Web Search",
@@ -51,13 +49,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-try:
-    from xai_sdk import Client
-    from xai_sdk.chat import user, system
-    from xai_sdk.search import SearchParameters  
-    XAI_AVAILABLE = True
-except ImportError:
-    XAI_AVAILABLE = False
+
 @dataclass
 class SearchResult:
     success: bool
@@ -143,14 +135,6 @@ class GeminiGroundingSearch:
                         search_queries = list(metadata.web_search_queries)
                     
                     # Extract sources efficiently
-                    # if hasattr(metadata, 'grounding_chunks'):
-                    #     limited_chunks = list(metadata.grounding_chunks)[:15]
-                    #     for chunk in metadata.grounding_chunks:
-                    #         if hasattr(chunk, 'web') and chunk.web and chunk.web.uri:
-                    #             sources.append({
-                    #                 'title': getattr(chunk.web, 'title', 'Unknown'),
-                    #                 'uri': chunk.web.uri
-                    #             })
                     if hasattr(metadata, 'grounding_chunks'):
                         total_chunks = len(list(metadata.grounding_chunks))
                         
@@ -312,8 +296,6 @@ class GeminiGroundingSearch:
 
 class GPTResponsesSearch:
     """Handles GPT-4o with OpenAI Responses API for web search"""
-    # ...existing code...
-
     
     @staticmethod
     def extract_response_text(response):
@@ -403,6 +385,7 @@ class GPTResponsesSearch:
             print(f"Error extracting sources: {e}")
         
         return sources
+    
     @staticmethod
     def search(query: str) -> SearchResult:
         """Search using GPT-4o with OpenAI Responses API for web grounding"""
@@ -449,10 +432,7 @@ class GPTResponsesSearch:
 
             response_time = time.time() - start_time
 
-            # ==============================================================================
             # CORRECT PARSING LOGIC BASED ON YOUR DEBUG OUTPUT
-            # ==============================================================================
-            
             response_text = ""
             sources = []
             search_queries = [query]
@@ -539,723 +519,7 @@ class GPTResponsesSearch:
                 error=str(e),
                 has_grounding=False
             )
-class GPTSerperSearch:
-    """Handles GPT-4o with Serper API for web search"""
-    
-    @staticmethod
-    def search_web_with_serper(query: str, num_results: int = 10) -> Dict:
-        """Search the web using Serper API"""
-        try:
-            url = "https://google.serper.dev/search"
-            payload = {
-                'q': query,
-                'num': num_results,
-                'gl': 'in',  # Country code for India
-                'hl': 'en'   # Language
-            }
-            headers = {
-                'X-API-KEY': SERPER_API_KEY,
-                'Content-Type': 'application/json'
-            }
-            
-            response = requests.post(url, json=payload, headers=headers)
-            response.raise_for_status()
-            return response.json()
-        
-        except Exception as e:
-            print(f"Serper API error: {e}")
-            return {}
-    
-    @staticmethod
-    def format_search_results_for_prompt(search_data: Dict) -> str:
-        """Format Serper search results for GPT prompt"""
-        if not search_data:
-            return "No search results available."
-        
-        formatted_results = []
-        
-        # Add organic results
-        if 'organic' in search_data:
-            for i, result in enumerate(search_data['organic'][:8], 1):  # Limit to 8 results
-                title = result.get('title', 'No title')
-                snippet = result.get('snippet', 'No description')
-                link = result.get('link', '')
-                
-                formatted_results.append(f"""
-                                        **Source {i}:**
-                                        Title: {title}
-                                        URL: {link}
-                                        Content: {snippet}
-                                        """)
-        
-        # Add knowledge graph if available
-        if 'knowledgeGraph' in search_data:
-            kg = search_data['knowledgeGraph']
-            if 'description' in kg:
-                formatted_results.append(f"""
-                                        **Knowledge Graph:**
-                                        {kg.get('title', '')}: {kg.get('description', '')}
-                                        """)
-        
-        # Add answer box if available
-        if 'answerBox' in search_data:
-            answer = search_data['answerBox']
-            if 'answer' in answer:
-                formatted_results.append(f"""
-                                        **Featured Answer:**
-                                        {answer.get('answer', '')}
-                                        """)
-        
-        return "\n".join(formatted_results) if formatted_results else "No relevant search results found."
-    
-    @staticmethod
-    def extract_sources_from_serper(search_data: Dict) -> List[Dict[str, str]]:
-        """Extract sources from Serper search results"""
-        sources = []
-        
-        if 'organic' in search_data:
-            for result in search_data['organic'][:10]:  # Limit to 10 sources
-                title = result.get('title', 'Web Source')
-                uri = result.get('link', '')
-                if uri:
-                    sources.append({
-                        'title': title,
-                        'uri': uri
-                    })
-        
-        return sources
-    
-    @staticmethod
-    def search(query: str) -> SearchResult:
-        """Search using GPT-4o with Serper API for web search"""
-        start_time = time.time()
-        
-        if not OPENAI_AVAILABLE:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="OpenAI SDK Not Available",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error="OpenAI SDK not installed. Please install: pip install openai",
-                has_grounding=False
-            )
-        
-        try:
-            # Step 1: Search the web using Serper API
-            search_data = GPTSerperSearch.search_web_with_serper(query)
-            
-            if not search_data:
-                raise Exception("Serper API search failed or returned no results")
-            
-            # Step 2: Format search results for GPT prompt
-            search_context = GPTSerperSearch.format_search_results_for_prompt(search_data)
-            
-            # Step 3: Create enhanced prompt with search context
-            enhanced_query = f"""
-                                Based on the following web search results for the query "{query}", please provide a comprehensive, accurate, and well-structured response:
 
-                                {search_context}
-
-                                Please provide detailed information including:
-                                - Current facts and latest developments from the search results
-                                - Key insights and important details
-                                - Recent changes or updates (prioritize 2024/2025 information)
-                                - Multiple perspectives when relevant from the sources
-                                - Specific examples and evidence from the search results
-                                - User location context: India
-
-                                Structure your response clearly and reference the sources naturally in your answer. Synthesize the information from multiple sources when possible.
-                                    """
-            
-            # Step 4: Get GPT-4o response
-            client = openai.OpenAI(api_key=OPENAI_API_KEY)
-            
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a helpful research assistant. Provide comprehensive, accurate responses based on the provided web search results. Always synthesize information from multiple sources and maintain factual accuracy."
-                    },
-                    {
-                        "role": "user",
-                        "content": enhanced_query
-                    }
-                ],
-                temperature=0.1,
-                #max_tokens=2048
-            )
-            
-            response_time = time.time() - start_time
-            
-            # Step 5: Extract response text
-            response_text = ""
-            if response.choices and response.choices[0].message:
-                response_text = response.choices[0].message.content
-            
-            # Step 6: Extract sources from search results
-            sources = GPTSerperSearch.extract_sources_from_serper(search_data)
-            
-            # Step 7: Prepare search queries (what was actually searched)
-            search_queries = [query]
-            if 'related' in search_data:
-                search_queries.extend([rel.get('query', '') for rel in search_data['related'][:3]])
-            
-            return SearchResult(
-                success=True,
-                response=response_text,
-                sources=sources,
-                search_queries=search_queries,
-                model="GPT-4o with Serper API",
-                timestamp=datetime.now().isoformat(),
-                response_time=response_time,
-                has_grounding=True,
-                raw_metadata=search_data
-            )
-        
-        except Exception as e:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="GPT-4o Serper API (Error)",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error=str(e),
-                has_grounding=False
-            )
-class GrokLiveSearch:
-    """Handles Grok-4 with Live Search using official xAI SDK"""
-    
-    @staticmethod
-    def search(query: str) -> SearchResult:
-        """Search using Grok-4 with Live Search capability"""
-        start_time = time.time()
-        #response_time=0.0
-        
-        if not XAI_AVAILABLE:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="xAI SDK Not Available",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error="xAI SDK not installed. Please install: pip install xai-sdk",
-                has_grounding=False
-            )
-        
-        try:
-            # Initialize xAI client
-            client = Client(api_key=XAI_API_KEY)
-            
-            # Enhanced query for Grok's live search
-            enhanced_query = f"""
-            Please provide comprehensive, current, and accurate information about: "{query}"
-            
-            I need detailed information including:
-            - Current facts and latest developments 
-            - Key insights and important details
-            - Recent changes or updates (prioritize 2024/2025 information)
-            - Multiple perspectives when relevant
-            - Specific examples and evidence
-            - User location context: India
-            
-            Use your live search capabilities to find the most up-to-date information available.
-            Please structure your response clearly and cite sources when available.
-            """
-            
-            # Configure search parameters for live search
-            search_params = SearchParameters(
-                mode="auto",  # Let Grok decide when to search
-                return_citations=True#,  # Include citations
-                #max_results=20,  # Maximum search results to consider
-                #sources=["web", "x"]  # Search both web and X/Twitter
-            )
-            
-            # Make request with live search enabled
-            from xai_sdk.chat import user
-            response = client.chat.create(
-                    model="grok-4-0709",
-                    messages=[
-                        user(enhanced_query)
-                    ],
-                    search_parameters=SearchParameters(
-                    mode="on",
-                    return_citations=True,
-                    ),
-                    temperature=0.1
-                    )
-            
-            #response = requests.post(
-                #"https://api.x.ai/v1/chat/completions",
-                #headers={
-                    #"Authorization": f"Bearer {XAI_API_KEY}",
-                    #"Content-Type": "application/json"
-                #},
-                #json={
-                    #"model": "grok-4-0709",  # Use the correct model name
-                    #"messages": [
-                        #{"role": "system", "content": "You are Grok, a helpful AI assistant with access to real-time information through web search. Use your search capabilities to provide current, accurate information."},
-                        #{"role": "user", "content": enhanced_query}
-                    #],
-                    #"stream": False,
-                    #"temperature": 0.1,
-                    #"max_tokens": 4000,
-                    #"tools": [{
-                        #"type": "function",
-                        #"function": {
-                            #"name": "live_search",
-                            #"description": "Search the web for current information",
-                            #"parameters": {
-                                #"type": "object",
-                                #"properties": {
-                                    #"query": {
-                                        #"type": "string",
-                                        #"description": "The search query"
-                                    #},
-                                    #"sources": {
-                                        #"type": "array",
-                                        #"items": {"type": "string"},
-                                        #"description": "Sources to search"
-                                    #}
-                            # },
-                                #"required": ["query"]
-                            #}
-                        #}
-                    #}],  # This enables live search
-                    #"tool_choice": "auto"  # Let Grok decide when to search
-                #},
-                #timeout=180
-            #)
-            # After: response = client.chat.create(...)
-
-# Extract response text and sources directly from the SDK response object
-            # Extract Grok response text (actual answer)
-            response_text = ""
-            if hasattr(response, "choices") and response.choices:
-                choice = response.choices[0]
-                if hasattr(choice, "message") and hasattr(choice.message, "content"):
-                    response_text = choice.message.content
-                elif hasattr(choice, "text"):
-                    response_text = choice.text
-            else:
-                response_text = str(response)
-            #print(response)
-
-            sources = []
-            search_queries = [query]
-            has_grounding = False
-
-            # If the SDK provides citations or sources, extract them here
-            if hasattr(response, "citations"):
-                for citation in response.citations:
-                    sources.append({
-                        "title": citation.get("title", "Web Source"),
-                        "uri": citation.get("url", citation.get("uri", ""))
-                    })
-                has_grounding = bool(sources)
-
-                        # Continue with your logic...
-                        
-            response_time = time.time() - start_time
-                            
-                            # Extract response text
-                            # Extract response text from HTTP response
-                            # Extract response text and sources directly from the SDK response object
-            response_text = getattr(response, "text", str(response))
-            sources = []
-            search_queries = [query]
-            has_grounding = False
-
-                        # If the SDK provides citations or sources, extract them here
-            if hasattr(response, "citations"):
-                for citation in response.citations:
-                    sources.append({
-                                    "title": citation.get("title", "Web Source"),
-                                    "uri": citation.get("url", citation.get("uri", ""))
-                                })
-                has_grounding = bool(sources)
-
-# If no sources found, try to extract from response text
-            if not sources:
-                sources = GrokLiveSearch.extract_sources_from_response(response_text)
-
-            # If no citations found but response seems to have web data, mark as grounded
-            if not has_grounding and (len(sources) > 0 or "according to" in response_text.lower() or "source:" in response_text.lower()):
-                has_grounding = True
-                        # Extract response text from HTTP response
-                        
-                        # Extract sources from response and usage data
-            
-            
-            
-            if not sources:
-                sources = GrokLiveSearch.extract_sources_from_response(response_text)
-            
-            # If no citations found but response seems to have web data, mark as grounded
-            if not has_grounding and (len(sources) > 0 or "according to" in response_text.lower() or "source:" in response_text.lower()):
-                has_grounding = True
-            
-            return SearchResult(
-                success=True,
-                response=response_text,
-                sources=sources, 
-                search_queries=search_queries,
-                model="Grok-4 with Live Search (xAI SDK)",
-                timestamp=datetime.now().isoformat(),
-                response_time=response_time,
-                has_grounding=has_grounding,
-                raw_metadata=response
-            )
-            
-        except Exception as e:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="Grok-4 Live Search (Error)",
-                timestamp=datetime.now().isoformat(), 
-                response_time=time.time() - start_time,
-                error=str(e),
-                has_grounding=False,
-                raw_metadata=response
-            )
-    
-    @staticmethod
-    def extract_sources_from_response(response_text: str) -> List[Dict[str, str]]:
-        """Extract sources from Grok response text as fallback"""
-        sources = []
-        
-        try:
-            import re
-            
-            # Common patterns for extracting sources from Grok responses
-            patterns = [
-                # URLs in markdown format [title](url)
-                r'\[([^\]]+)\]\((https?://[^\)]+)\)',
-                # Direct URLs
-                r'(https?://[^\s\]\)]+)',
-                # Source citations
-                r'Source:\s*([^\n]+)',
-                r'According to\s+([^,\n]+)',
-                r'From\s+([^,\n]+)',
-            ]
-            
-            found_urls = set()
-            
-            # Extract markdown links first (best quality)
-            markdown_links = re.findall(r'\[([^\]]+)\]\((https?://[^\)]+)\)', response_text)
-            for title, url in markdown_links:
-                if url not in found_urls and len(sources) < 10:
-                    sources.append({
-                        'title': title.strip(),
-                        'uri': url.strip()
-                    })
-                    found_urls.add(url)
-            
-            # Extract direct URLs
-            direct_urls = re.findall(r'https?://[^\s\]\)]+', response_text)
-            for url in direct_urls:
-                if url not in found_urls and len(sources) < 10:
-                    try:
-                        from urllib.parse import urlparse
-                        domain = urlparse(url).netloc
-                        title = domain.replace('www.', '').replace('.com', '').title()
-                    except:
-                        title = f"Web Source {len(sources) + 1}"
-                    
-                    sources.append({
-                        'title': title,
-                        'uri': url.strip()
-                    })
-                    found_urls.add(url)
-        
-        except Exception as e:
-            print(f"Error extracting sources from Grok response: {e}")
-        
-        return sources[:10]
-    
-class GPTChatCompletionsWebSearch:
-    """Handles GPT-4o with Chat Completions API using function calling for web search"""
-    
-    @staticmethod
-    def search_web_with_serper(query: str, num_results: int = 10) -> Dict:
-        """Search the web using Serper API - reuse from GPTSerperSearch"""
-        try:
-            url = "https://google.serper.dev/search"
-            payload = {
-                'q': query,
-                'num': num_results,
-                'gl': 'in',  # Country code for India
-                'hl': 'en'   # Language
-            }
-            headers = {
-                'X-API-KEY': SERPER_API_KEY,
-                'Content-Type': 'application/json'
-            }
-            
-            response = requests.post(url, json=payload, headers=headers)
-            response.raise_for_status()
-            return response.json()
-        
-        except Exception as e:
-            print(f"Serper API error: {e}")
-            return {}
-    
-    @staticmethod
-    def web_search_function(query: str) -> str:
-        """Function to be called by GPT-4o for web search"""
-        search_data = GPTChatCompletionsWebSearch.search_web_with_serper(query)
-        
-        if not search_data:
-            return "No search results found."
-        
-        # Format results more concisely for function response
-        results = []
-        
-        # Add organic results
-        if 'organic' in search_data:
-            for result in search_data['organic'][:5]:  # Limit to top 5 for function response
-                title = result.get('title', 'No title')
-                snippet = result.get('snippet', 'No description')
-                link = result.get('link', '')
-                results.append(f"Title: {title}\nURL: {link}\nSnippet: {snippet}\n")
-        
-        # Add knowledge graph if available
-        if 'knowledgeGraph' in search_data:
-            kg = search_data['knowledgeGraph']
-            if 'description' in kg:
-                results.append(f"Knowledge Graph: {kg.get('title', '')}: {kg.get('description', '')}\n")
-        
-        # Add answer box if available
-        if 'answerBox' in search_data:
-            answer = search_data['answerBox']
-            if 'answer' in answer:
-                results.append(f"Featured Answer: {answer.get('answer', '')}\n")
-        
-        return "\n".join(results[:10])  # Return top results
-    
-    @staticmethod
-    def search(query: str) -> SearchResult:
-        """Search using GPT-4o with Chat Completions API and function calling"""
-        start_time = time.time()
-        
-        if not OPENAI_AVAILABLE:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="OpenAI SDK Not Available",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error="OpenAI SDK not installed. Please install: pip install openai",
-                has_grounding=False
-            )
-        
-        try:
-            client = openai.OpenAI(api_key=OPENAI_API_KEY)
-            
-            # Define the web search function
-            tools = [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "web_search",
-                        "description": "Search the web for current information using Google search",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "query": {
-                                    "type": "string",
-                                    "description": "The search query to find current information"
-                                }
-                            },
-                            "required": ["query"]
-                        }
-                    }
-                }
-            ]
-            
-            # Enhanced system message
-            system_message = """You are a helpful research assistant with access to web search capabilities. When a user asks for information that might benefit from current web data, use the web_search function to find up-to-date information. Always provide comprehensive, accurate responses based on the search results and cite your sources when possible."""
-            
-            # Enhanced user query
-            enhanced_query = f"""
-            Please provide comprehensive, current, and accurate information about: "{query}"
-            
-            I need detailed information including:
-            - Current facts and latest developments
-            - Key insights and important details  
-            - Recent changes or updates (prioritize 2024/2025 information)
-            - Multiple perspectives when relevant
-            - Specific examples and evidence
-            - User location context: India
-            
-            Please use web search to find the most current information available and structure your response clearly.
-            """
-            
-            # First API call - let GPT decide if it needs to search
-            messages = [
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": enhanced_query}
-            ]
-            
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=messages,
-                tools=tools,
-                tool_choice="auto",  # Let GPT decide when to use tools
-                temperature=0.1,
-                max_tokens=4000
-            )
-            
-            # Store sources and search queries
-            sources = []
-            search_queries = [query]
-            
-            # Check if GPT wants to use function calling
-            response_message = response.choices[0].message
-            tool_calls = response_message.tool_calls
-            
-            if tool_calls:
-                # GPT decided to search - execute function calls
-                messages.append(response_message)  # Add GPT's message with tool calls
-                
-                for tool_call in tool_calls:
-                    if tool_call.function.name == "web_search":
-                        # Parse the search query from function call
-                        function_args = json.loads(tool_call.function.arguments)
-                        search_query = function_args.get("query", query)
-                        search_queries.append(search_query)
-                        
-                        # Execute the web search
-                        search_results = GPTChatCompletionsWebSearch.web_search_function(search_query)
-                        
-                        # Add function response to messages
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": search_results
-                        })
-                        
-                        # Extract sources from the original search data
-                        search_data = GPTChatCompletionsWebSearch.search_web_with_serper(search_query)
-                        if 'organic' in search_data:
-                            for result in search_data['organic'][:10]:
-                                title = result.get('title', 'Web Source')
-                                uri = result.get('link', '')
-                                if uri:
-                                    sources.append({'title': title, 'uri': uri})
-                
-                # Second API call with search results
-                final_response = client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=messages,
-                    temperature=0.1,
-                    max_tokens=4000
-                )
-                
-                response_text = final_response.choices[0].message.content
-                has_grounding = True
-                
-            else:
-                # GPT didn't use function calling - use original response
-                response_text = response_message.content
-                has_grounding = False
-            
-            response_time = time.time() - start_time
-            
-            return SearchResult(
-                success=True,
-                response=response_text,
-                sources=sources,
-                search_queries=list(set(search_queries)),  # Remove duplicates
-                model="GPT-4o Chat Completions with Function Calling",
-                timestamp=datetime.now().isoformat(),
-                response_time=response_time,
-                has_grounding=has_grounding
-            )
-        
-        except Exception as e:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="GPT-4o Chat Completions (Error)",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error=str(e),
-                has_grounding=False
-            )
-
-# def add_citations_to_text(response_result: SearchResult) -> str:
-#     """Add inline citations to the response text"""
-#     if not response_result.has_grounding or not response_result.sources:
-#         return response_result.response
-    
-#     text = response_result.response
-    
-#     # Simple citation approach - add numbered references at the end
-#     if response_result.sources:
-#         citations = []
-#         for i, source in enumerate(response_result.sources, 1):
-#             title = source.get('title', f'Source {i}')
-#             uri = source.get('uri', '')
-#             if uri:
-#                 citations.append(f"[{i}] {title}: {uri}")
-        
-#         if citations:
-#             text += "\n\n**Sources:**\n" + "\n".join(citations)
-    
-#     return text
-# def add_citations_to_text(response_result: SearchResult) -> str:
-#     """Add inline citations to the response text for Gemini only"""
-#     if not response_result.has_grounding or not response_result.sources:
-#         return response_result.response
-    
-#     # Only apply inline citations to Gemini models
-#     if "gemini" not in response_result.model.lower():
-#         return response_result.response
-    
-#     text = response_result.response
-#     sources = response_result.sources
-    
-#     if not sources:
-#         return text
-    
-#     # Create source mapping
-#     source_map = {}
-#     for i, source in enumerate(sources, 1):
-#         title = source.get('title', f'Source {i}')
-#         uri = source.get('uri', '')
-#         if uri:
-#             source_map[i] = f"[{title}]({uri})"
-    
-#     # Split text into sentences and add inline citations
-#     import re
-#     sentences = re.split(r'(?<=[.!?])\s+', text)
-    
-#     # Add citations to sentences (distribute evenly across response)
-#     if len(sentences) > 1 and source_map:
-#         citation_interval = max(1, len(sentences) // len(source_map))
-#         source_idx = 1
-        
-#         for i in range(0, len(sentences), citation_interval):
-#             if source_idx <= len(source_map) and i < len(sentences):
-#                 # Add citation at end of sentence
-#                 sentences[i] = sentences[i].rstrip() + f" {source_map[source_idx]}"
-#                 source_idx += 1
-    
-#     return " ".join(sentences)
 def add_citations_to_text(response_result: SearchResult) -> str:
     """Add inline citations to the response text for Gemini only"""
     if not response_result.has_grounding or not response_result.sources:
@@ -1286,7 +550,6 @@ def add_citations_to_text(response_result: SearchResult) -> str:
             source_idx += 1
     
     return '\n\n'.join(paragraphs)
-
 
 def display_search_result(result: SearchResult):
     """Display search results with proper grounding information"""
@@ -1319,16 +582,6 @@ def display_search_result(result: SearchResult):
         response_with_citations = add_citations_to_text(result)
         st.markdown(response_with_citations)
         
-        # Sources section (if available)
-        # if result.sources:
-        #     st.subheader("🔗 Sources & References")
-        #     for i, source in enumerate(result.sources, 1):
-        #         title = source.get('title', f'Source {i}')
-        #         uri = source.get('uri', '')
-        #         if uri:
-        #             st.markdown(f"**{i}.** [{title}]({uri})")
-        #         else:
-        #             st.markdown(f"**{i}.** {title}")
         # Sources section (only for non-Gemini models)
         if result.sources and "gemini" not in result.model.lower():
             st.subheader("🔗 Sources & References")
@@ -1409,13 +662,10 @@ def display_search_result(result: SearchResult):
                 4. Try a simpler query first
                 """)
 
-    #st.subheader("🛠️ Raw Model Response (Debug)")
-    #st.code(str(result.raw_metadata if hasattr(result, "raw_metadata") else result.response), language="python")
-
 def main():
     # Header
-    st.title("🔍Websearch Comparison")
-    st.markdown("**Choose between Gemini 2.5/2.0 Flash Grounding, or GPT-4o Responses API, or GPT-4o with Serper API, or Grok4 with Live search**")
+    st.title("🔍 Web Search Comparison")
+    st.markdown("**Choose between Gemini 2.5/2.0 Flash Grounding or GPT-4o Responses API**")
     
     # Model Selection
     st.subheader("🤖 Select AI Model")
@@ -1423,29 +673,18 @@ def main():
     # Check SDK availability
     gemini_available = NEW_SDK_AVAILABLE or OLD_SDK_AVAILABLE
     openai_available = OPENAI_AVAILABLE
-    serper_available = bool(SERPER_API_KEY and SERPER_API_KEY != "your-serper-api-key-here")
-    grok_available = XAI_AVAILABLE and bool(XAI_API_KEY and XAI_API_KEY != "your-xai-api-key-here")
     
     options = []
     if gemini_available:
         options.append("Gemini 2.5/2.0 Flash with Google Search Grounding")
     if openai_available:
         options.append("GPT-4o with Responses API Web Search")
-    if openai_available and serper_available:
-        options.append("GPT-4o with Serper API Web Search")
-    if grok_available:
-        options.append("Grok-4 with Live Web Search")
-    if openai_available:
-
-        options.append("GPT-4o with Chat Completions API")  # Add this line
-
-    
     
     if not options:
         st.error("❌ No AI models available. Please install required SDKs and configure API keys:")
         st.markdown("""
         ```bash
-        pip install google-genai openai requests
+        pip install google-genai openai
         ```
         """)
         return
@@ -1470,18 +709,6 @@ def main():
             st.success("✅ OpenAI SDK available - GPT-4o with web search enabled")
         else:
             st.error("❌ OpenAI SDK not available")
-    elif "Serper API" in selected_model:
-        if openai_available and serper_available:
-            st.success("✅ GPT-4o with Serper API - Full web search enabled")
-        elif not openai_available:
-            st.error("❌ OpenAI SDK not available")
-        elif not serper_available:
-            st.error("❌ Serper API key not configured")
-    elif "Grok" in selected_model:
-        if grok_available:
-            st.success("✅ xAI Grok SDK available - Live search enabled")
-        else:
-            st.error("❌ xAI SDK not installed or API key not configured")
     
     # Sidebar
     st.sidebar.title("⚙️ Configuration")
@@ -1494,14 +721,6 @@ def main():
     else:
         st.sidebar.warning("⚠️ OpenAI API Key: Not Configured")
     
-    if SERPER_API_KEY and SERPER_API_KEY != "your-serper-api-key-here":
-        st.sidebar.success("✅ Serper API Key: Configured")
-    else:
-        st.sidebar.warning("⚠️ Serper API Key: Not Configured")
-    if XAI_API_KEY and XAI_API_KEY != "your-xai-api-key-here":
-        st.sidebar.success("✅ xAI Grok API Key: Configured")
-    else:
-        st.sidebar.warning("⚠️ xAI Grok API Key: Not Configured")
     # Settings
     st.sidebar.subheader("⚙️ Settings")
     save_history = st.sidebar.checkbox("💾 Save History", True)
@@ -1522,7 +741,6 @@ def main():
     with col2:
         st.write("")
         search_button = st.button("🚀 Search", type="primary", use_container_width=True)
-    
     
     # Execute search
     if search_button and search_query:
@@ -1550,37 +768,6 @@ def main():
             
             with st.spinner(f"🔍 Searching with GPT-4o Responses API..."):
                 result = GPTResponsesSearch.search(search_query)
-
-        elif "Serper API" in selected_model:  # GPT-4o with Serper
-            if not openai_available:
-                st.error("❌ OpenAI SDK not available")
-                return
-            
-            if not serper_available:
-                st.error("❌ Serper API key not configured")
-                return
-            
-            with st.spinner(f"🔍 Searching with GPT-4o + Serper API..."):
-                result = GPTSerperSearch.search(search_query)
-        elif "Grok" in selected_model:  # Grok-4 with Live Search
-            if not grok_available:
-                st.error("❌ xAI Grok SDK not available or API key not configured")
-                return
-            
-            with st.spinner(f"🔍 Searching with Grok-4 Live Search..."):
-                result = GrokLiveSearch.search(search_query)
-
-        elif "Function Calling" in selected_model:  # GPT-4o Chat Completions
-            if not openai_available:
-                st.error("❌ OpenAI SDK not available")
-                return
-            
-            if not serper_available:
-                st.error("❌ Serper API key not configured")
-                return
-            
-            with st.spinner(f"🔍 Searching with GPT-4o Chat Completions..."):
-                result = GPTChatCompletionsWebSearch.search(search_query)
                 
         st.divider()
         display_search_result(result)
@@ -1619,41 +806,4 @@ def main():
                     st.rerun()
         
         if st.sidebar.button("🗑️ Clear History"):
-            st.session_state.search_history = []
-            st.rerun()
-    
-    # Footer
-    st.divider()
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown(f"""
-        **🔍 Available Models:**
-        - Gemini: {'Available' if gemini_available else 'Not Available'}
-        - GPT-4o: {'Available' if openai_available else 'Not Available'}
-        - GPT-4o Serper: {'Available' if (openai_available and serper_available) else 'Not Available'}
-        - Grok-4: {'Available' if grok_available else 'Not Available'}
-        - Grounding: All support web search
-        - Current: {selected_model[:30]}...
-        """)
-    
-    with col2:
-        st.markdown("""
-        **💡 Tips:**
-        - Use specific queries for better results
-        - Include current year for recent info
-        - All models provide real-time data
-        - Grok has access to X/Twitter data
-        - Live Search costs $25 per 1,000 sources
-        - Check sources for verification
-        """)
-    
-    st.markdown("---")
-    st.markdown(
-        "**Powered by Gemini , GPT-4o,Grok-4 and Serper API with Web Search** | "
-        "API Keys Embedded | "
-        "Usage may incur costs"
-    )
-
-if __name__ == "__main__":
-    main()
+            st.session_
