@@ -570,8 +570,9 @@ class AzureAIAgentsSearch:
         try:
             import streamlit as st
             import requests
-            from azure.identity import DefaultAzureCredential
+            from azure.identity import ClientSecretCredential, DefaultAzureCredential
             from azure.core.exceptions import ClientAuthenticationError
+            import os
         except ImportError as e:
             return SearchResult(
                 success=False,
@@ -601,20 +602,20 @@ class AzureAIAgentsSearch:
             agent_id = st.secrets.get("AZURE_AGENT_ID", "")
             tenant_id = st.secrets.get("AZURE_TENANT_ID", "")
             
+            # For service principal authentication (required for Streamlit Cloud)
+            client_id = st.secrets.get("AZURE_CLIENT_ID", "")
+            client_secret = st.secrets.get("AZURE_CLIENT_SECRET", "")
+            
             # Extract the correct endpoint format
-            # From: https://ricku-mfrmxlii-eastus2.services.ai.azure.com/api/projects/ricku-mfrmxlii-eastus2_project/
-            # To: https://ricku-mfrmxlii-eastus2.services.ai.azure.com
             if "/api/projects/" in full_endpoint:
                 base_endpoint = full_endpoint.split("/api/projects/")[0]
                 project_path_part = full_endpoint.split("/api/projects/")[1].rstrip('/')
                 project_endpoint = f"{base_endpoint}/api/projects/{project_path_part}"
             else:
-                # If it's already in the correct format
                 base_endpoint = full_endpoint.rstrip('/')
-                # Assume project name from the subdomain if not provided
                 if ".services.ai.azure.com" in base_endpoint:
                     subdomain = base_endpoint.split("//")[1].split(".")[0]
-                    project_name = f"{subdomain}_project"  # Common pattern
+                    project_name = f"{subdomain}_project"
                     project_endpoint = f"{base_endpoint}/api/projects/{project_name}"
                 else:
                     project_endpoint = base_endpoint
@@ -626,6 +627,8 @@ class AzureAIAgentsSearch:
             st.write(f"- Project Endpoint: {project_endpoint}")
             st.write(f"- Agent ID: {agent_id[:20]}..." if agent_id else "✗ Missing")
             st.write(f"- Tenant ID: {tenant_id[:20]}..." if tenant_id else "✗ Missing")
+            st.write(f"- Client ID: {client_id[:20]}..." if client_id else "✗ Missing")
+            st.write(f"- Client Secret: {'✓ Set' if client_secret else '✗ Missing'}")
             
         except KeyError as e:
             return SearchResult(
@@ -636,7 +639,7 @@ class AzureAIAgentsSearch:
                 model="Azure Configuration Missing",
                 timestamp=datetime.now().isoformat(),
                 response_time=time.time() - start_time,
-                error=f"Missing Streamlit secret: {e}. Need AZURE_AI_FOUNDRY_ENDPOINT, AZURE_AGENT_ID, and AZURE_TENANT_ID",
+                error=f"Missing Streamlit secret: {e}. Need AZURE_AI_FOUNDRY_ENDPOINT, AZURE_AGENT_ID, AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET",
                 has_grounding=False
             )
         
@@ -667,47 +670,94 @@ class AzureAIAgentsSearch:
             )
         
         try:
-            # Microsoft Entra ID Authentication (REQUIRED for Azure AI Foundry Agent Service)
-            st.write("**DEBUG: Using Microsoft Entra ID Authentication (Required)**")
+            # Choose authentication method based on available credentials
+            credential = None
             
-            try:
-                credential = DefaultAzureCredential()
-                # Use the correct scope for Azure AI services
-                token_result = credential.get_token("https://cognitiveservices.azure.com/.default")
+            if client_id and client_secret and tenant_id:
+                # Method 1: Service Principal Authentication (Recommended for Streamlit Cloud)
+                st.write("**DEBUG: Using Service Principal Authentication**")
                 
-                headers = {
-                    "Authorization": f"Bearer {token_result.token}",
-                    "Content-Type": "application/json",
-                    "User-Agent": "StreamlitApp/1.0"
-                }
-                st.write("✓ Successfully obtained Entra ID token")
+                try:
+                    credential = ClientSecretCredential(
+                        tenant_id=tenant_id,
+                        client_id=client_id,
+                        client_secret=client_secret
+                    )
+                    
+                    # Test the credential
+                    token_result = credential.get_token("https://cognitiveservices.azure.com/.default")
+                    
+                    headers = {
+                        "Authorization": f"Bearer {token_result.token}",
+                        "Content-Type": "application/json",
+                        "User-Agent": "StreamlitApp/1.0"
+                    }
+                    st.write("✓ Successfully obtained Service Principal token")
+                    
+                except ClientAuthenticationError as auth_error:
+                    st.write(f"✗ Service Principal Authentication failed: {auth_error}")
+                    return SearchResult(
+                        success=False,
+                        response="",
+                        sources=[],
+                        search_queries=[],
+                        model="Service Principal Auth Failed",
+                        timestamp=datetime.now().isoformat(),
+                        response_time=time.time() - start_time,
+                        error=f"Service Principal authentication failed: {auth_error}. Please verify your AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, and AZURE_TENANT_ID.",
+                        has_grounding=False
+                    )
+                except Exception as auth_error:
+                    st.write(f"✗ Service Principal setup error: {auth_error}")
+                    return SearchResult(
+                        success=False,
+                        response="",
+                        sources=[],
+                        search_queries=[],
+                        model="Authentication Setup Failed",
+                        timestamp=datetime.now().isoformat(),
+                        response_time=time.time() - start_time,
+                        error=f"Authentication setup failed: {auth_error}",
+                        has_grounding=False
+                    )
+            
+            else:
+                # Method 2: DefaultAzureCredential (fallback for local development)
+                st.write("**DEBUG: Using DefaultAzureCredential (Fallback)**")
+                st.write("⚠️ Service Principal credentials not available, trying DefaultAzureCredential")
                 
-            except ClientAuthenticationError as auth_error:
-                st.write(f"✗ Entra ID Authentication failed: {auth_error}")
-                return SearchResult(
-                    success=False,
-                    response="",
-                    sources=[],
-                    search_queries=[],
-                    model="Entra ID Auth Failed",
-                    timestamp=datetime.now().isoformat(),
-                    response_time=time.time() - start_time,
-                    error=f"Entra ID authentication failed: {auth_error}. Please ensure you're logged into Azure CLI or have managed identity configured.",
-                    has_grounding=False
-                )
-            except Exception as auth_error:
-                st.write(f"✗ Authentication setup error: {auth_error}")
-                return SearchResult(
-                    success=False,
-                    response="",
-                    sources=[],
-                    search_queries=[],
-                    model="Authentication Setup Failed",
-                    timestamp=datetime.now().isoformat(),
-                    response_time=time.time() - start_time,
-                    error=f"Authentication setup failed: {auth_error}. Please run 'az login' or configure managed identity.",
-                    has_grounding=False
-                )
+                try:
+                    # Set environment variables for DefaultAzureCredential if available
+                    if tenant_id:
+                        os.environ['AZURE_TENANT_ID'] = tenant_id
+                    if client_id:
+                        os.environ['AZURE_CLIENT_ID'] = client_id
+                    if client_secret:
+                        os.environ['AZURE_CLIENT_SECRET'] = client_secret
+                    
+                    credential = DefaultAzureCredential()
+                    token_result = credential.get_token("https://cognitiveservices.azure.com/.default")
+                    
+                    headers = {
+                        "Authorization": f"Bearer {token_result.token}",
+                        "Content-Type": "application/json",
+                        "User-Agent": "StreamlitApp/1.0"
+                    }
+                    st.write("✓ Successfully obtained DefaultAzureCredential token")
+                    
+                except ClientAuthenticationError as auth_error:
+                    st.write(f"✗ DefaultAzureCredential Authentication failed: {auth_error}")
+                    return SearchResult(
+                        success=False,
+                        response="",
+                        sources=[],
+                        search_queries=[],
+                        model="Default Auth Failed",
+                        timestamp=datetime.now().isoformat(),
+                        response_time=time.time() - start_time,
+                        error=f"Authentication failed. For Streamlit Cloud deployment, you need to add AZURE_CLIENT_ID and AZURE_CLIENT_SECRET to your secrets. Error: {auth_error}",
+                        has_grounding=False
+                    )
             
             # Debug: Test endpoint connectivity
             st.write("**DEBUG: Testing endpoint connectivity...**")
@@ -759,7 +809,7 @@ class AzureAIAgentsSearch:
                         model="Authentication Failed",
                         timestamp=datetime.now().isoformat(),
                         response_time=time.time() - start_time,
-                        error=f"Authentication failed (401). Azure AI Foundry Agent Service requires Microsoft Entra ID authentication. Please ensure you're logged in with 'az login' and have proper RBAC roles assigned. Details: {error_details}",
+                        error=f"Authentication failed (401). Please ensure your Service Principal has proper permissions and the credentials are correct. Details: {error_details}",
                         has_grounding=False
                     )
                 elif thread_response.status_code == 403:
@@ -771,7 +821,7 @@ class AzureAIAgentsSearch:
                         model="Access Forbidden",
                         timestamp=datetime.now().isoformat(),
                         response_time=time.time() - start_time,
-                        error=f"Access forbidden (403). Please ensure you have the required Azure roles: Cognitive Services User, Azure AI Developer. Details: {error_details}",
+                        error=f"Access forbidden (403). Please ensure your Service Principal has these Azure roles: Cognitive Services User, Azure AI Developer. Details: {error_details}",
                         has_grounding=False
                     )
                 elif thread_response.status_code == 404:
@@ -893,18 +943,165 @@ class AzureAIAgentsSearch:
             
             st.write(f"DEBUG: Run created successfully with ID: {run_id}")
             
-            # Continue with polling and response extraction...
-            # [Rest of the implementation remains the same as in the previous version]
+            # Step 4: Poll for completion with better error handling
+            run_status_url = f"{project_endpoint}/threads/{thread_id}/runs/{run_id}"
+            max_polls = 60
+            poll_count = 0
+            
+            while poll_count < max_polls:
+                try:
+                    status_response = requests.get(
+                        run_status_url,
+                        headers=headers,
+                        params=thread_params,
+                        timeout=15
+                    )
+                    
+                    if status_response.status_code != 200:
+                        st.write(f"DEBUG: Status check failed: {status_response.status_code}")
+                        break
+                    
+                    status_data = status_response.json()
+                    status = status_data.get("status")
+                    st.write(f"DEBUG: Run status: {status}")
+                    
+                    if status == "completed":
+                        break
+                    elif status in ["failed", "cancelled", "expired"]:
+                        error_details = status_data.get("last_error", {})
+                        error_msg = error_details.get("message", "Unknown error")
+                        return SearchResult(
+                            success=False,
+                            response="",
+                            sources=[],
+                            search_queries=[],
+                            model=f"Azure AI Agent ({agent_id})",
+                            timestamp=datetime.now().isoformat(),
+                            response_time=time.time() - start_time,
+                            error=f"Run failed with status '{status}': {error_msg}",
+                            has_grounding=False
+                        )
+                    elif status == "requires_action":
+                        required_action = status_data.get("required_action", {})
+                        st.write(f"DEBUG: Run requires action: {required_action}")
+                    
+                    time.sleep(2)
+                    poll_count += 1
+                    
+                except requests.RequestException as e:
+                    st.write(f"DEBUG: Polling error: {e}")
+                    time.sleep(3)
+                    poll_count += 1
+            
+            if poll_count >= max_polls:
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=[],
+                    model=f"Azure AI Agent ({agent_id})",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=time.time() - start_time,
+                    error="Run timed out waiting for completion after 2 minutes",
+                    has_grounding=False
+                )
+            
+            st.write("DEBUG: Run completed successfully")
+            
+            # Step 5: Get messages from thread
+            messages_url = f"{project_endpoint}/threads/{thread_id}/messages"
+            messages_response = requests.get(
+                messages_url,
+                headers=headers,
+                params=dict(thread_params, order="asc"),
+                timeout=30
+            )
+            
+            if messages_response.status_code != 200:
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=[],
+                    model=f"Azure AI Agent ({agent_id})",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=time.time() - start_time,
+                    error=f"Failed to get messages: {messages_response.status_code} - {messages_response.text}",
+                    has_grounding=False
+                )
+            
+            messages_data = messages_response.json()
+            response_time = time.time() - start_time
+            
+            # Step 6: Parse response
+            response_text = ""
+            sources = []
+            search_queries = [query]
+            has_grounding = False
+            
+            # Extract the assistant's response (most recent assistant message)
+            messages_list = messages_data.get("data", [])
+            assistant_messages = [msg for msg in messages_list if msg.get("role") == "assistant"]
+            
+            if assistant_messages:
+                latest_message = assistant_messages[-1]
+                content_items = latest_message.get("content", [])
+                
+                for content_item in content_items:
+                    if content_item.get("type") == "text":
+                        text_data = content_item.get("text", {})
+                        response_text = text_data.get("value", "")
+                        
+                        # Extract citations/sources from annotations
+                        annotations = text_data.get("annotations", [])
+                        for annotation in annotations:
+                            annotation_type = annotation.get("type")
+                            if annotation_type == "file_citation":
+                                file_citation = annotation.get("file_citation", {})
+                                sources.append({
+                                    "title": f"File: {file_citation.get('file_id', 'Unknown')}",
+                                    "uri": f"file://{file_citation.get('file_id', '')}"
+                                })
+                                has_grounding = True
+                            elif annotation_type == "file_path":
+                                file_path = annotation.get("file_path", {})
+                                sources.append({
+                                    "title": f"File: {file_path.get('file_id', 'Unknown')}",
+                                    "uri": f"file://{file_path.get('file_id', '')}"
+                                })
+                                has_grounding = True
+                        break
+            
+            # Heuristic grounding detection
+            if not has_grounding and response_text:
+                grounding_indicators = [
+                    "according to", "based on recent", "current information",
+                    "latest", "recent reports", "today", "this year", "2024", "2025",
+                    "search results show", "found that", "indicates", "sources suggest",
+                    "according to web sources", "recent data", "current data", "bing search"
+                ]
+                
+                response_lower = response_text.lower()
+                if any(indicator in response_lower for indicator in grounding_indicators):
+                    has_grounding = True
+            
+            # Clean up response
+            if not response_text:
+                response_text = "No response generated by the agent."
+            
+            st.write(f"DEBUG: Response extracted successfully. Length: {len(response_text)}")
+            st.write(f"DEBUG: Sources found: {len(sources)}")
+            st.write(f"DEBUG: Has grounding: {has_grounding}")
             
             return SearchResult(
                 success=True,
-                response="Authentication and endpoint configuration fixed. Continue with full implementation.",
-                sources=[],
-                search_queries=[query],
+                response=response_text,
+                sources=sources[:10],  # Limit to 10 sources
+                search_queries=search_queries,
                 model=f"Azure AI Foundry Agent ({agent_id}) with Bing Grounding",
                 timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                has_grounding=True
+                response_time=response_time,
+                has_grounding=has_grounding
             )
             
         except requests.RequestException as e:
@@ -934,6 +1131,7 @@ class AzureAIAgentsSearch:
                 error=str(e),
                 has_grounding=False
             )
+
 
 
 def add_citations_to_text(response_result: SearchResult) -> str:
