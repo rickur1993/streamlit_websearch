@@ -934,34 +934,293 @@ class AzureAIAgentsSearch:
                 )
             
             st.write(f"DEBUG: Thread created successfully with ID: {thread_id}")
-            
-            # Continue with the rest of the implementation as before...
-            # [Rest of the code remains the same - message creation, run creation, polling, etc.]
-            
+
+            # Step 2: Add message to thread
+            message_url = f"{project_endpoint}/threads/{thread_id}/messages"
+            message_data = {
+                "role": "user",
+                "content": enhanced_query
+            }
+
+            st.write(f"DEBUG: Adding message to thread at {message_url}")
+
+            message_response = requests.post(
+                message_url,
+                headers=headers,
+                json=message_data,
+                params=thread_params,
+                timeout=30
+            )
+
+            st.write(f"DEBUG: Message creation response: {message_response.status_code}")
+            if message_response.status_code != 200:
+                st.write(f"DEBUG: Message creation error: {message_response.text}")
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=[],
+                    model="Message Creation Failed",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=time.time() - start_time,
+                    error=f"Failed to create message: {message_response.status_code} - {message_response.text}",
+                    has_grounding=False
+                )
+
+            st.write("DEBUG: Message created successfully")
+
+            # Step 3: Create and run the agent
+            run_url = f"{project_endpoint}/threads/{thread_id}/runs"
+            run_data = {
+                "assistant_id": agent_id,
+                "additional_instructions": f"""For this query about "{query}", please use the Bing grounding tool to search for the most current information available. This query would benefit from real-time web data. Always search for recent information when the query relates to current events, news, or time-sensitive topics."""
+            }
+
+            st.write(f"DEBUG: Creating run at {run_url}")
+            st.write(f"DEBUG: Run data: {run_data}")
+
+            run_response = requests.post(
+                run_url,
+                headers=headers,
+                json=run_data,
+                params=thread_params,
+                timeout=30
+            )
+
+            st.write(f"DEBUG: Run creation response: {run_response.status_code}")
+            if run_response.status_code != 200:
+                st.write(f"DEBUG: Run creation error: {run_response.text}")
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=[],
+                    model="Run Creation Failed",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=time.time() - start_time,
+                    error=f"Failed to create run: {run_response.status_code} - {run_response.text}",
+                    has_grounding=False
+                )
+
+            run_data_response = run_response.json()
+            run_id = run_data_response.get("id")
+            if not run_id:
+                st.write("DEBUG: No run ID in response")
+                st.write(f"DEBUG: Full run response: {run_data_response}")
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=[],
+                    model="Run ID Missing",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=time.time() - start_time,
+                    error="No run ID returned from Azure AI Foundry",
+                    has_grounding=False
+                )
+
+            st.write(f"DEBUG: Run created successfully with ID: {run_id}")
+
+            # Step 4: Poll for completion with detailed debugging
+            run_status_url = f"{project_endpoint}/threads/{thread_id}/runs/{run_id}"
+            max_polls = 60  # 2 minutes max
+            poll_count = 0
+
+            st.write("DEBUG: Starting polling for run completion...")
+
+            while poll_count < max_polls:
+                try:
+                    status_response = requests.get(
+                        run_status_url,
+                        headers=headers,
+                        params=thread_params,
+                        timeout=15
+                    )
+                    
+                    if status_response.status_code != 200:
+                        st.write(f"DEBUG: Status check failed: {status_response.status_code}")
+                        st.write(f"DEBUG: Status error: {status_response.text}")
+                        break
+                    
+                    status_data = status_response.json()
+                    status = status_data.get("status")
+                    st.write(f"DEBUG: Poll {poll_count + 1}: Run status = {status}")
+                    
+                    # Log additional status information
+                    if "last_error" in status_data and status_data["last_error"]:
+                        st.write(f"DEBUG: Last error: {status_data['last_error']}")
+                    
+                    if "required_action" in status_data and status_data["required_action"]:
+                        st.write(f"DEBUG: Required action: {status_data['required_action']}")
+                    
+                    if status == "completed":
+                        st.write("DEBUG: Run completed successfully!")
+                        break
+                    elif status in ["failed", "cancelled", "expired"]:
+                        error_details = status_data.get("last_error", {})
+                        error_msg = error_details.get("message", "Unknown error")
+                        st.write(f"DEBUG: Run failed with status '{status}': {error_msg}")
+                        return SearchResult(
+                            success=False,
+                            response="",
+                            sources=[],
+                            search_queries=[],
+                            model=f"Azure AI Agent ({agent_id})",
+                            timestamp=datetime.now().isoformat(),
+                            response_time=time.time() - start_time,
+                            error=f"Run failed with status '{status}': {error_msg}",
+                            has_grounding=False
+                        )
+                    elif status == "requires_action":
+                        required_action = status_data.get("required_action", {})
+                        st.write(f"DEBUG: Run requires action: {required_action}")
+                        # Note: In a complete implementation, you'd handle tool calls here
+                    
+                    time.sleep(2)
+                    poll_count += 1
+                    
+                except requests.RequestException as e:
+                    st.write(f"DEBUG: Polling error: {e}")
+                    time.sleep(3)
+                    poll_count += 1
+
+            if poll_count >= max_polls:
+                st.write("DEBUG: Polling timed out!")
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=[],
+                    model=f"Azure AI Agent ({agent_id})",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=time.time() - start_time,
+                    error="Run timed out waiting for completion after 2 minutes",
+                    has_grounding=False
+                )
+
+            # Step 5: Get messages from thread
+            messages_url = f"{project_endpoint}/threads/{thread_id}/messages"
+            st.write(f"DEBUG: Getting messages from {messages_url}")
+
+            messages_response = requests.get(
+                messages_url,
+                headers=headers,
+                params=dict(thread_params, order="asc"),
+                timeout=30
+            )
+
+            st.write(f"DEBUG: Messages response: {messages_response.status_code}")
+            if messages_response.status_code != 200:
+                st.write(f"DEBUG: Messages error: {messages_response.text}")
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=[],
+                    model=f"Azure AI Agent ({agent_id})",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=time.time() - start_time,
+                    error=f"Failed to get messages: {messages_response.status_code} - {messages_response.text}",
+                    has_grounding=False
+                )
+
+            messages_data = messages_response.json()
+            st.write(f"DEBUG: Total messages received: {len(messages_data.get('data', []))}")
+
+            # Step 6: Parse response with detailed debugging
+            response_text = ""
+            sources = []
+            search_queries = [query]
+            has_grounding = False
+
+            # Extract the assistant's response (most recent assistant message)
+            messages_list = messages_data.get("data", [])
+            assistant_messages = [msg for msg in messages_list if msg.get("role") == "assistant"]
+
+            st.write(f"DEBUG: Found {len(assistant_messages)} assistant messages")
+
+            if assistant_messages:
+                latest_message = assistant_messages[-1]
+                st.write(f"DEBUG: Latest assistant message keys: {latest_message.keys()}")
+                
+                content_items = latest_message.get("content", [])
+                st.write(f"DEBUG: Found {len(content_items)} content items")
+                
+                for i, content_item in enumerate(content_items):
+                    st.write(f"DEBUG: Content item {i} type: {content_item.get('type')}")
+                    
+                    if content_item.get("type") == "text":
+                        text_data = content_item.get("text", {})
+                        response_text = text_data.get("value", "")
+                        st.write(f"DEBUG: Extracted response text length: {len(response_text)}")
+                        
+                        # Extract citations/sources from annotations
+                        annotations = text_data.get("annotations", [])
+                        st.write(f"DEBUG: Found {len(annotations)} annotations")
+                        
+                        for annotation in annotations:
+                            annotation_type = annotation.get("type")
+                            st.write(f"DEBUG: Annotation type: {annotation_type}")
+                            
+                            if annotation_type == "file_citation":
+                                file_citation = annotation.get("file_citation", {})
+                                sources.append({
+                                    "title": f"File: {file_citation.get('file_id', 'Unknown')}",
+                                    "uri": f"file://{file_citation.get('file_id', '')}"
+                                })
+                                has_grounding = True
+                            elif annotation_type == "file_path":
+                                file_path = annotation.get("file_path", {})
+                                sources.append({
+                                    "title": f"File: {file_path.get('file_id', 'Unknown')}",
+                                    "uri": f"file://{file_path.get('file_id', '')}"
+                                })
+                                has_grounding = True
+                        break
+            else:
+                st.write("DEBUG: No assistant messages found!")
+                st.write(f"DEBUG: All message roles: {[msg.get('role') for msg in messages_list]}")
+                
+                # Show full messages data for debugging
+                for i, msg in enumerate(messages_list):
+                    st.write(f"DEBUG: Message {i}: Role={msg.get('role')}, Content keys={list(msg.keys())}")
+
+            # Heuristic grounding detection
+            if not has_grounding and response_text:
+                grounding_indicators = [
+                    "according to", "based on recent", "current information",
+                    "latest", "recent reports", "today", "this year", "2024", "2025",
+                    "search results show", "found that", "indicates", "sources suggest",
+                    "according to web sources", "recent data", "current data", "bing search"
+                ]
+                
+                response_lower = response_text.lower()
+                if any(indicator in response_lower for indicator in grounding_indicators):
+                    has_grounding = True
+                    st.write("DEBUG: Heuristic grounding detected")
+
+            # Clean up response
+            if not response_text:
+                response_text = "No response generated by the agent."
+                st.write("DEBUG: No response text found, using fallback message")
+
+            st.write(f"DEBUG: Final response length: {len(response_text)}")
+            st.write(f"DEBUG: Final sources count: {len(sources)}")
+            st.write(f"DEBUG: Final has_grounding: {has_grounding}")
+
+            response_time = time.time() - start_time
+
             return SearchResult(
                 success=True,
-                response=f"Authentication successful with scope: {successful_scope}. Thread created: {thread_id}",
-                sources=[],
-                search_queries=[query],
+                response=response_text,
+                sources=sources[:10],  # Limit to 10 sources
+                search_queries=search_queries,
                 model=f"Azure AI Foundry Agent ({agent_id}) with Bing Grounding",
                 timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                has_grounding=True
+                response_time=response_time,
+                has_grounding=has_grounding
             )
-            
-        except requests.RequestException as e:
-            st.write(f"DEBUG: Network error: {str(e)}")
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="Azure AI Network Error",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error=f"Network error: {str(e)}",
-                has_grounding=False
-            )
+
         
         except Exception as e:
             st.write(f"DEBUG: Unexpected error: {str(e)}")
