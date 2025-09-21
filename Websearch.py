@@ -844,7 +844,7 @@ class AzureAIAgentsSearch:
             Please structure your response clearly with proper organization and cite your sources."""
             
             # Use the correct API version for Azure AI Foundry Agent Service
-            api_version = "2024-07-01-preview"  # Stable version for Agent Service
+            api_version = "2024-11-20"  # Stable version for Agent Service
             
             # Step 1: Create thread with correct endpoint format
             thread_url = f"{project_endpoint}/threads"
