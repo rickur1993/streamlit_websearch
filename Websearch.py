@@ -561,49 +561,45 @@ class GPTResponsesSearch:
 
 
 
-
 class AzureAIAgentsSearch:
-    """Azure AI Foundry Agents with Bing Search grounding following Microsoft documentation patterns"""
+    """Azure AI Foundry Agents with Bing Search using REST API (works in Streamlit Cloud)"""
     
     @staticmethod
     def search(query: str) -> SearchResult:
-        """Search using Azure AI Foundry Agent Service with Bing grounding - following official docs"""
+        """Search using Azure AI Foundry Agent Service with Bing grounding via REST API"""
         start_time = time.time()
         
-        # Import required dependencies
+        # Import streamlit for secrets
         try:
-            from azure.ai.projects import AIProjectClient
-            from azure.identity import DefaultAzureCredential
-            from azure.ai.agents.models import BingGroundingTool
             import streamlit as st
-        except ImportError as e:
+        except ImportError:
             return SearchResult(
                 success=False,
                 response="",
                 sources=[],
                 search_queries=[],
-                model="Azure AI Projects SDK Not Available",
+                model="Streamlit Not Available",
                 timestamp=datetime.now().isoformat(),
                 response_time=time.time() - start_time,
-                error=f"Missing dependencies: {e}. Please install: pip install azure-ai-projects azure-identity",
+                error="Streamlit not available for accessing secrets",
                 has_grounding=False
             )
         
         # Get configuration from Streamlit secrets
         try:
             project_endpoint = st.secrets["AZURE_AI_FOUNDRY_ENDPOINT"]
-            model_deployment_name = st.secrets.get("AZURE_MODEL_DEPLOYMENT", "gpt-4o")
             agent_id = st.secrets.get("AZURE_AGENT_ID", "")
+            api_key = st.secrets.get("AZURE_AI_FOUNDRY_KEY", "")
         except KeyError as e:
             return SearchResult(
                 success=False,
                 response="",
                 sources=[],
                 search_queries=[],
-                model="Azure AI Foundry Configuration Error",
+                model="Azure Configuration Missing",
                 timestamp=datetime.now().isoformat(),
                 response_time=time.time() - start_time,
-                error=f"Missing Streamlit secret: {e}. Please ensure AZURE_AI_FOUNDRY_ENDPOINT is configured.",
+                error=f"Missing Streamlit secret: {e}. Need AZURE_AI_FOUNDRY_ENDPOINT and optionally AZURE_AI_FOUNDRY_KEY",
                 has_grounding=False
             )
         
@@ -613,53 +609,61 @@ class AzureAIAgentsSearch:
                 response="",
                 sources=[],
                 search_queries=[],
-                model="Azure AI Foundry Not Configured",
+                model="Azure Not Configured",
                 timestamp=datetime.now().isoformat(),
                 response_time=time.time() - start_time,
-                error="AZURE_AI_FOUNDRY_ENDPOINT not configured in Streamlit secrets",
+                error="AZURE_AI_FOUNDRY_ENDPOINT not configured",
+                has_grounding=False
+            )
+        
+        if not agent_id:
+            return SearchResult(
+                success=False,
+                response="",
+                sources=[],
+                search_queries=[],
+                model="Azure Agent Not Configured",
+                timestamp=datetime.now().isoformat(),
+                response_time=time.time() - start_time,
+                error="AZURE_AGENT_ID not configured. Please create an agent in Azure AI Foundry first.",
                 has_grounding=False
             )
         
         try:
-            # Create AI Project Client using DefaultAzureCredential (as per Microsoft docs)
-            # This handles authentication automatically without needing client ID/secret
-            project_client = AIProjectClient(
-                endpoint=project_endpoint,
-                credential=DefaultAzureCredential()  # Simple authentication as per docs
-            )
+            # Ensure endpoint format is correct
+            if not project_endpoint.endswith('/'):
+                project_endpoint = project_endpoint.rstrip('/')
             
-            # If no agent_id provided, create a new agent with Bing grounding
-            current_agent_id = agent_id
-            created_new_agent = False
+            # Set up headers
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": "StreamlitApp/1.0"
+            }
             
-            if not current_agent_id:
-                # Create Bing Grounding tool
-                bing_tool = BingGroundingTool()
-                
-                # Create agent with Bing Search capability (following docs pattern)
-                agent = project_client.agents.create_agent(
-                    model=model_deployment_name,
-                    name="Web Search Assistant",
-                    instructions="""You are a helpful AI assistant with access to real-time web information through Bing Search.
-
-Your responsibilities:
-- Provide accurate, up-to-date information using web search when needed
-- Use the Bing Grounding tool for current events, recent news, or time-sensitive queries  
-- Cite sources and provide links when using web information
-- Be clear about when information comes from web search vs your training data
-- Prioritize recent information (2024-2025) when available
-
-Use Bing search for:
-- Current events or recent news
-- Time-sensitive information (weather, stocks, etc.)
-- Recent developments in any field
-- Questions asking about "latest", "current", "today", "recent"
-
-Always search for the most current information available when the query requires it.""",
-                    tools=bing_tool.definitions
-                )
-                current_agent_id = agent.id
-                created_new_agent = True
+            # Add authentication - try API key first if available
+            if api_key:
+                if api_key.startswith('sk-'):
+                    headers["Authorization"] = f"Bearer {api_key}"
+                else:
+                    headers["Ocp-Apim-Subscription-Key"] = api_key
+            else:
+                # Try to get a token (this might fail in Streamlit Cloud, but worth trying)
+                try:
+                    import subprocess
+                    result = subprocess.run([
+                        'az', 'account', 'get-access-token', 
+                        '--resource', 'https://ai.azure.com'
+                    ], capture_output=True, text=True, check=True, timeout=5)
+                    
+                    token_data = json.loads(result.stdout)
+                    access_token = token_data.get('accessToken')
+                    headers["Authorization"] = f"Bearer {access_token}"
+                except:
+                    # If we can't get a token and no API key, we'll try without auth
+                    # Some Azure AI services allow unauthenticated calls with endpoint URLs
+                    pass
+            
+            api_version = "2025-05-01"
             
             # Enhanced query to encourage Bing search usage
             enhanced_query = f"""Please provide comprehensive, current, and accurate information about: "{query}"
@@ -674,111 +678,263 @@ I need detailed information including:
 
 Please use the Bing search tool to find the most current information and cite your sources properly. This query appears to need real-time or recent information, so please search the web for the latest data."""
 
-            # Create thread for communication (following docs pattern)
-            thread = project_client.agents.threads.create()
+            # Step 1: Create thread
+            thread_url = f"{project_endpoint}/threads"
+            thread_params = {"api-version": api_version}
             
-            # Add message to thread
-            message = project_client.agents.messages.create(
-                thread_id=thread.id,
-                role="user",
-                content=enhanced_query
+            thread_response = requests.post(
+                thread_url,
+                headers=headers,
+                json={},
+                params=thread_params,
+                timeout=30
             )
             
-            # Create and process run (following docs pattern)
-            run = project_client.agents.runs.create_and_process(
-                thread_id=thread.id,
-                agent_id=current_agent_id,
-                additional_instructions=f"""For this query about "{query}", please use the Bing grounding tool to search for the most current information available. This query would benefit from real-time web data."""
-            )
-            
-            response_time = time.time() - start_time
-            
-            # Check run status
-            if run.status == "failed":
-                error_message = "Unknown error"
-                if hasattr(run, 'last_error') and run.last_error:
-                    error_message = run.last_error.get('message', 'Unknown error')
+            if thread_response.status_code != 200:
+                error_details = thread_response.text
+                if "unauthorized" in error_details.lower() or "authentication" in error_details.lower():
+                    return SearchResult(
+                        success=False,
+                        response="",
+                        sources=[],
+                        search_queries=[],
+                        model="Authentication Failed",
+                        timestamp=datetime.now().isoformat(),
+                        response_time=time.time() - start_time,
+                        error=f"Authentication failed. Please ensure AZURE_AI_FOUNDRY_KEY is configured in secrets. Status: {thread_response.status_code}",
+                        has_grounding=False
+                    )
                 
                 return SearchResult(
                     success=False,
                     response="",
                     sources=[],
                     search_queries=[],
-                    model=f"Azure AI Agent ({current_agent_id})",
+                    model="Thread Creation Failed",
                     timestamp=datetime.now().isoformat(),
-                    response_time=response_time,
-                    error=f"Agent run failed: {error_message}",
+                    response_time=time.time() - start_time,
+                    error=f"Failed to create thread: {thread_response.status_code} - {error_details}",
                     has_grounding=False
                 )
             
-            # Get messages from thread (following docs pattern)
-            messages = project_client.agents.messages.list(thread_id=thread.id)
+            thread_data = thread_response.json()
+            thread_id = thread_data.get("id")
             
-            # Extract assistant response
+            if not thread_id:
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=[],
+                    model="Thread ID Missing",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=time.time() - start_time,
+                    error="No thread ID returned from Azure AI Foundry",
+                    has_grounding=False
+                )
+            
+            # Step 2: Add message to thread
+            message_url = f"{project_endpoint}/threads/{thread_id}/messages"
+            message_data = {
+                "role": "user",
+                "content": enhanced_query
+            }
+            
+            message_response = requests.post(
+                message_url,
+                headers=headers,
+                json=message_data,
+                params=thread_params,
+                timeout=30
+            )
+            
+            if message_response.status_code != 200:
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=[],
+                    model="Message Creation Failed",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=time.time() - start_time,
+                    error=f"Failed to create message: {message_response.status_code} - {message_response.text}",
+                    has_grounding=False
+                )
+            
+            # Step 3: Create and run the agent
+            run_url = f"{project_endpoint}/threads/{thread_id}/runs"
+            run_data = {
+                "assistant_id": agent_id,
+                "additional_instructions": f"""For this query about "{query}", please use the Bing grounding tool to search for the most current information available. This query would benefit from real-time web data. Always search for recent information when the query relates to current events, news, or time-sensitive topics."""
+            }
+            
+            run_response = requests.post(
+                run_url,
+                headers=headers,
+                json=run_data,
+                params=thread_params,
+                timeout=30
+            )
+            
+            if run_response.status_code != 200:
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=[],
+                    model="Run Creation Failed",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=time.time() - start_time,
+                    error=f"Failed to create run: {run_response.status_code} - {run_response.text}",
+                    has_grounding=False
+                )
+            
+            run_data_response = run_response.json()
+            run_id = run_data_response.get("id")
+            
+            if not run_id:
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=[],
+                    model="Run ID Missing",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=time.time() - start_time,
+                    error="No run ID returned from Azure AI Foundry",
+                    has_grounding=False
+                )
+            
+            # Step 4: Poll for completion
+            run_status_url = f"{project_endpoint}/threads/{thread_id}/runs/{run_id}"
+            max_polls = 60
+            poll_count = 0
+            
+            while poll_count < max_polls:
+                try:
+                    status_response = requests.get(
+                        run_status_url,
+                        headers=headers,
+                        params=thread_params,
+                        timeout=15
+                    )
+                    
+                    if status_response.status_code != 200:
+                        break
+                    
+                    status_data = status_response.json()
+                    status = status_data.get("status")
+                    
+                    if status == "completed":
+                        break
+                    elif status in ["failed", "cancelled", "expired"]:
+                        error_details = status_data.get("last_error", {})
+                        error_msg = error_details.get("message", "Unknown error")
+                        return SearchResult(
+                            success=False,
+                            response="",
+                            sources=[],
+                            search_queries=[],
+                            model=f"Azure AI Agent ({agent_id})",
+                            timestamp=datetime.now().isoformat(),
+                            response_time=time.time() - start_time,
+                            error=f"Run failed with status '{status}': {error_msg}",
+                            has_grounding=False
+                        )
+                    elif status == "requires_action":
+                        # Log the required action but continue polling
+                        required_action = status_data.get("required_action", {})
+                        print(f"Run requires action: {required_action}")
+                    
+                    time.sleep(2)
+                    poll_count += 1
+                    
+                except requests.RequestException:
+                    time.sleep(3)
+                    poll_count += 1
+            
+            if poll_count >= max_polls:
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=[],
+                    model=f"Azure AI Agent ({agent_id})",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=time.time() - start_time,
+                    error="Run timed out waiting for completion after 2 minutes",
+                    has_grounding=False
+                )
+            
+            # Step 5: Get messages from thread
+            messages_url = f"{project_endpoint}/threads/{thread_id}/messages"
+            messages_response = requests.get(
+                messages_url,
+                headers=headers,
+                params=dict(thread_params, order="asc"),
+                timeout=30
+            )
+            
+            if messages_response.status_code != 200:
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=[],
+                    model=f"Azure AI Agent ({agent_id})",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=time.time() - start_time,
+                    error=f"Failed to get messages: {messages_response.status_code} - {messages_response.text}",
+                    has_grounding=False
+                )
+            
+            messages_data = messages_response.json()
+            response_time = time.time() - start_time
+            
+            # Step 6: Parse response
             response_text = ""
             sources = []
             search_queries = [query]
             has_grounding = False
             
-            # Process messages to find assistant response
-            for msg in messages:
-                if msg.role == "assistant":
-                    # Extract content from message
-                    for content in msg.content:
-                        if hasattr(content, 'text') and content.text:
-                            response_text = content.text.value
-                            
-                            # Check for annotations (citations) - following docs pattern
-                            if hasattr(content.text, 'annotations'):
-                                for annotation in content.text.annotations:
-                                    # Handle file citations
-                                    if hasattr(annotation, 'file_citation') and annotation.file_citation:
-                                        file_citation = annotation.file_citation
-                                        sources.append({
-                                            "title": f"Referenced File",
-                                            "uri": f"file://{file_citation.file_id}"
-                                        })
-                                        has_grounding = True
-                                    
-                                    # Handle file path references  
-                                    elif hasattr(annotation, 'file_path') and annotation.file_path:
-                                        file_path = annotation.file_path
-                                        sources.append({
-                                            "title": f"File Path Reference",
-                                            "uri": f"file://{file_path.file_id}"
-                                        })
-                                        has_grounding = True
-                    break
+            # Extract the assistant's response (most recent assistant message)
+            messages_list = messages_data.get("data", [])
+            assistant_messages = [msg for msg in messages_list if msg.get("role") == "assistant"]
             
-            # Get run steps to extract Bing search details (following docs pattern)
-            try:
-                run_steps = project_client.agents.runs_steps.list(
-                    run_id=run.id, 
-                    thread_id=thread.id
-                )
+            if assistant_messages:
+                # Get the most recent assistant message
+                latest_message = assistant_messages[-1]
+                content_items = latest_message.get("content", [])
                 
-                # Look for tool calls in run steps
-                for step in run_steps.data:
-                    if hasattr(step, 'step_details') and hasattr(step.step_details, 'tool_calls'):
-                        for tool_call in step.step_details.tool_calls:
-                            if tool_call.type == "bing_grounding":
+                for content_item in content_items:
+                    if content_item.get("type") == "text":
+                        text_data = content_item.get("text", {})
+                        response_text = text_data.get("value", "")
+                        
+                        # Extract citations/sources from annotations
+                        annotations = text_data.get("annotations", [])
+                        for annotation in annotations:
+                            annotation_type = annotation.get("type")
+                            
+                            if annotation_type == "file_citation":
+                                file_citation = annotation.get("file_citation", {})
+                                sources.append({
+                                    "title": f"File: {file_citation.get('file_id', 'Unknown')}",
+                                    "uri": f"file://{file_citation.get('file_id', '')}"
+                                })
                                 has_grounding = True
                                 
-                                # Extract Bing search information if available
-                                if hasattr(tool_call, 'bing_grounding'):
-                                    bing_data = tool_call.bing_grounding
-                                    
-                                    # Extract search query used
-                                    if hasattr(bing_data, 'input') and bing_data.input:
-                                        search_query_used = bing_data.input
-                                        if search_query_used not in search_queries:
-                                            search_queries.append(search_query_used)
-                                        
-            except Exception as e:
-                # Run steps extraction is optional - don't fail if it doesn't work
-                pass
+                            elif annotation_type == "file_path":
+                                file_path = annotation.get("file_path", {})
+                                sources.append({
+                                    "title": f"File: {file_path.get('file_id', 'Unknown')}",
+                                    "uri": f"file://{file_path.get('file_id', '')}"
+                                })
+                                has_grounding = True
+                        
+                        break
             
-            # Heuristic grounding detection if no explicit tool calls found
+            # Heuristic grounding detection
             if not has_grounding and response_text:
                 grounding_indicators = [
                     "according to", "based on recent", "current information", 
@@ -791,38 +947,50 @@ Please use the Bing search tool to find the most current information and cite yo
                 if any(indicator in response_lower for indicator in grounding_indicators):
                     has_grounding = True
             
-            # Clean up - delete thread and agent if we created them (following docs pattern)
-            try:
-                project_client.agents.threads.delete(thread_id=thread.id)
-                # Only delete agent if we created it (no agent_id was provided initially)
-                if created_new_agent:
-                    project_client.agents.delete_agent(agent_id=current_agent_id)
-            except Exception:
-                pass  # Cleanup is best effort
+            # Clean up response
+            if not response_text:
+                response_text = "No response generated by the agent."
             
             return SearchResult(
                 success=True,
-                response=response_text or "No response generated by the agent.",
-                sources=sources,
+                response=response_text,
+                sources=sources[:10],  # Limit to 10 sources
                 search_queries=search_queries,
-                model=f"Azure AI Foundry Agent ({current_agent_id}) with Bing Grounding",
+                model=f"Azure AI Foundry Agent ({agent_id}) with Bing Grounding",
                 timestamp=datetime.now().isoformat(),
                 response_time=response_time,
                 has_grounding=has_grounding
             )
             
+        except requests.RequestException as e:
+            return SearchResult(
+                success=False,
+                response="",
+                sources=[],
+                search_queries=[],
+                model="Azure AI Network Error",
+                timestamp=datetime.now().isoformat(),
+                response_time=time.time() - start_time,
+                error=f"Network error: {str(e)}",
+                has_grounding=False
+            )
         except Exception as e:
             return SearchResult(
                 success=False,
                 response="",
                 sources=[],
                 search_queries=[],
-                model="Azure AI Foundry Agent Error",
+                model="Azure AI Error",
                 timestamp=datetime.now().isoformat(),
                 response_time=time.time() - start_time,
                 error=str(e),
                 has_grounding=False
             )
+
+
+
+
+
 
 
 
