@@ -1160,8 +1160,6 @@ class AzureAIAgentsSearch:
                         
                         for annotation in annotations:
                             annotation_type = annotation.get("type")
-                            st.write(f"DEBUG: Annotation type: {annotation_type}")
-                            
                             if annotation_type == "file_citation":
                                 file_citation = annotation.get("file_citation", {})
                                 sources.append({
@@ -1179,28 +1177,15 @@ class AzureAIAgentsSearch:
                             elif annotation_type == "url_citation":
                                 # ADDED: Handle URL citations from Bing search
                                 url_citation = annotation.get("url_citation", {})
-                                
-                                # Debug the url_citation structure
-                                st.write(f"DEBUG: URL citation keys: {list(url_citation.keys()) if url_citation else 'None'}")
-                                
                                 if url_citation:
                                     title = url_citation.get("title", url_citation.get("name", "Unknown Source"))
                                     url = url_citation.get("url", url_citation.get("uri", ""))
-                                    
-                                    # Additional debugging
-                                    st.write(f"DEBUG: URL citation - Title: {title[:50]}..., URL: {url}")
-                                    
                                     if url:  # Only add if URL exists
                                         sources.append({
                                             "title": title,
                                             "uri": url
                                         })
                                         has_grounding = True
-                                        st.write(f"DEBUG: Added source: {title}")
-                                    else:
-                                        st.write("DEBUG: URL citation missing URL field")
-                                else:
-                                    st.write("DEBUG: Empty url_citation object")
 
                         break
             else:
