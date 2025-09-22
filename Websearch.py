@@ -1150,29 +1150,55 @@ def add_citations_to_text(response_result: SearchResult) -> str:
     if not sources:
         return text
     
-    # For Azure AI Agents, first clean up existing citation patterns like (3:3+source)
+    # For Azure AI Agents, handle the special citation format
     if "azure" in model_lower:
         import re
-        # Remove patterns like (3:3+source), (1:1+source), etc.
-        text = re.sub(r'\(\d+:\d+\+[^)]+\)', '', text)
-        # Clean up extra spaces
-        text = re.sub(r'\s+', ' ', text).strip()
+        
+        # Replace Azure citation patterns with inline links
+        # Pattern matches 【3:1†source】, 【3:2†source】, etc.
+        citation_pattern = r'【\d+:\d+†source】'
+        
+        # Find all citations in the text
+        citations = re.findall(citation_pattern, text)
+        
+        # Replace each citation with corresponding source link
+        source_index = 0
+        for citation in citations:
+            if source_index < len(sources):
+                source = sources[source_index]
+                title = source.get('title', f'Source {source_index + 1}')
+                uri = source.get('uri', '')
+                
+                if uri:
+                    replacement = f" [{title}]({uri})"
+                    text = text.replace(citation, replacement, 1)  # Replace only first occurrence
+                else:
+                    text = text.replace(citation, f" [{title}]", 1)
+                
+                source_index += 1
+            else:
+                # Remove citation if no corresponding source
+                text = text.replace(citation, '', 1)
+        
+        return text
     
-    # Split into paragraphs
-    paragraphs = text.split('\n\n')
-    
-    # Add citations to paragraphs (one source per substantial paragraph)
-    source_idx = 0
-    for i, paragraph in enumerate(paragraphs):
-        if len(paragraph.strip()) > 100 and source_idx < len(sources):  # Only substantial paragraphs
-            source = sources[source_idx]
-            title = source.get('title', f'Source {source_idx + 1}')
-            uri = source.get('uri', '')
-            if uri:
-                paragraphs[i] = paragraph.rstrip() + f" [{title}]({uri})"
-            source_idx += 1
-    
-    return '\n\n'.join(paragraphs)
+    # For Gemini models, use the original paragraph-based approach
+    else:
+        # Split into paragraphs
+        paragraphs = text.split('\n\n')
+        
+        # Add citations to paragraphs (one source per substantial paragraph)
+        source_idx = 0
+        for i, paragraph in enumerate(paragraphs):
+            if len(paragraph.strip()) > 100 and source_idx < len(sources):  # Only substantial paragraphs
+                source = sources[source_idx]
+                title = source.get('title', f'Source {source_idx + 1}')
+                uri = source.get('uri', '')
+                if uri:
+                    paragraphs[i] = paragraph.rstrip() + f" [{title}]({uri})"
+                source_idx += 1
+        
+        return '\n\n'.join(paragraphs)
 
 def display_search_result(result: SearchResult):
     """Display search results with proper grounding information"""
