@@ -1135,12 +1135,13 @@ class AzureAIAgentsSearch:
             )
 
 def add_citations_to_text(response_result: SearchResult) -> str:
-    """Add inline citations to the response text for Gemini only"""
+    """Add inline citations to the response text for Gemini and Azure AI Agents"""
     if not response_result.has_grounding or not response_result.sources:
         return response_result.response
     
-    # Only apply inline citations to Gemini models
-    if "gemini" not in response_result.model.lower():
+    # Apply inline citations to Gemini models and Azure AI Agents
+    model_lower = response_result.model.lower()
+    if "gemini" not in model_lower and "azure" not in model_lower:
         return response_result.response
     
     text = response_result.response
@@ -1148,6 +1149,14 @@ def add_citations_to_text(response_result: SearchResult) -> str:
     
     if not sources:
         return text
+    
+    # For Azure AI Agents, first clean up existing citation patterns like (3:3+source)
+    if "azure" in model_lower:
+        import re
+        # Remove patterns like (3:3+source), (1:1+source), etc.
+        text = re.sub(r'\(\d+:\d+\+[^)]+\)', '', text)
+        # Clean up extra spaces
+        text = re.sub(r'\s+', ' ', text).strip()
     
     # Split into paragraphs
     paragraphs = text.split('\n\n')
