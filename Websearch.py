@@ -562,6 +562,7 @@ class AzureAIAgentsSearch:
     """Azure AI Foundry Agents with Bing Search using REST API with enhanced debugging and authentication"""
     
     @staticmethod
+    
     def search(query: str) -> SearchResult:
         """Search using Azure AI Foundry Agent Service with Bing grounding via REST API"""
         start_time = time.time()
@@ -585,15 +586,6 @@ class AzureAIAgentsSearch:
                 error=f"Required dependencies missing: {e}. Install with: pip install azure-identity",
                 has_grounding=False
             )
-        
-        # DEBUG: Print all available secrets (without values)
-        try:
-            st.write("**DEBUG: Available Secrets:**")
-            for key in st.secrets.keys():
-                if 'AZURE' in key.upper():
-                    st.write(f"- {key}: {'✓ Set' if st.secrets[key] else '✗ Missing'}")
-        except Exception as e:
-            st.write(f"DEBUG: Error accessing secrets: {e}")
         
         # Get configuration from Streamlit secrets
         try:
@@ -619,16 +611,6 @@ class AzureAIAgentsSearch:
                     project_endpoint = f"{base_endpoint}/api/projects/{project_name}"
                 else:
                     project_endpoint = base_endpoint
-            
-            # DEBUG: Validate configuration
-            st.write("**DEBUG: Configuration Check:**")
-            st.write(f"- Full Endpoint: {full_endpoint}")
-            st.write(f"- Base Endpoint: {base_endpoint}")
-            st.write(f"- Project Endpoint: {project_endpoint}")
-            st.write(f"- Agent ID: {agent_id[:20]}..." if agent_id else "✗ Missing")
-            st.write(f"- Tenant ID: {tenant_id[:20]}..." if tenant_id else "✗ Missing")
-            st.write(f"- Client ID: {client_id[:20]}..." if client_id else "✗ Missing")
-            st.write(f"- Client Secret: {'✓ Set' if client_secret else '✗ Missing'}")
             
         except KeyError as e:
             return SearchResult(
@@ -660,7 +642,6 @@ class AzureAIAgentsSearch:
             return SearchResult(
                 success=False,
                 response="",
-                sources=[],
                 search_queries=[],
                 model="Azure Agent Not Configured",
                 timestamp=datetime.now().isoformat(),
@@ -675,18 +656,12 @@ class AzureAIAgentsSearch:
             
             if client_id and client_secret and tenant_id:
                 # Method 1: Service Principal Authentication (Recommended for Streamlit Cloud)
-                st.write("**DEBUG: Using Service Principal Authentication**")
-                
                 try:
                     credential = ClientSecretCredential(
                         tenant_id=tenant_id,
                         client_id=client_id,
                         client_secret=client_secret
                     )
-                    
-                    # CRITICAL FIX: Use the correct scope for Azure AI Foundry
-                    # The error message indicated audience should be https://ai.azure.com
-                    st.write("DEBUG: Requesting token with Azure AI Foundry scope...")
                     
                     # Try multiple scopes to find the correct one
                     token_scopes = [
@@ -700,13 +675,10 @@ class AzureAIAgentsSearch:
                     
                     for scope in token_scopes:
                         try:
-                            st.write(f"DEBUG: Trying scope: {scope}")
                             token_result = credential.get_token(scope)
                             successful_scope = scope
-                            st.write(f"✓ Successfully obtained token with scope: {scope}")
                             break
-                        except Exception as scope_error:
-                            st.write(f"✗ Failed with scope {scope}: {scope_error}")
+                        except Exception:
                             continue
                     
                     if not token_result:
@@ -727,10 +699,8 @@ class AzureAIAgentsSearch:
                         "Content-Type": "application/json",
                         "User-Agent": "StreamlitApp/1.0"
                     }
-                    st.write(f"✓ Successfully obtained Service Principal token with scope: {successful_scope}")
                     
                 except ClientAuthenticationError as auth_error:
-                    st.write(f"✗ Service Principal Authentication failed: {auth_error}")
                     return SearchResult(
                         success=False,
                         response="",
@@ -743,7 +713,6 @@ class AzureAIAgentsSearch:
                         has_grounding=False
                     )
                 except Exception as auth_error:
-                    st.write(f"✗ Service Principal setup error: {auth_error}")
                     return SearchResult(
                         success=False,
                         response="",
@@ -758,9 +727,6 @@ class AzureAIAgentsSearch:
             
             else:
                 # Method 2: DefaultAzureCredential (fallback for local development)
-                st.write("**DEBUG: Using DefaultAzureCredential (Fallback)**")
-                st.write("⚠️ Service Principal credentials not available, trying DefaultAzureCredential")
-                
                 try:
                     # Set environment variables for DefaultAzureCredential if available
                     if tenant_id:
@@ -784,13 +750,10 @@ class AzureAIAgentsSearch:
                     
                     for scope in token_scopes:
                         try:
-                            st.write(f"DEBUG: Trying scope with DefaultAzureCredential: {scope}")
                             token_result = credential.get_token(scope)
                             successful_scope = scope
-                            st.write(f"✓ Successfully obtained token with scope: {scope}")
                             break
-                        except Exception as scope_error:
-                            st.write(f"✗ Failed with scope {scope}: {scope_error}")
+                        except Exception:
                             continue
                     
                     if not token_result:
@@ -811,10 +774,8 @@ class AzureAIAgentsSearch:
                         "Content-Type": "application/json",
                         "User-Agent": "StreamlitApp/1.0"
                     }
-                    st.write(f"✓ Successfully obtained DefaultAzureCredential token with scope: {successful_scope}")
                     
                 except ClientAuthenticationError as auth_error:
-                    st.write(f"✗ DefaultAzureCredential Authentication failed: {auth_error}")
                     return SearchResult(
                         success=False,
                         response="",
@@ -826,9 +787,6 @@ class AzureAIAgentsSearch:
                         error=f"Authentication failed. For Streamlit Cloud deployment, you need to add AZURE_CLIENT_ID and AZURE_CLIENT_SECRET to your secrets. Error: {auth_error}",
                         has_grounding=False
                     )
-            
-            # Debug: Test endpoint connectivity
-            st.write("**DEBUG: Testing endpoint connectivity...**")
             
             # Enhanced query for better results
             enhanced_query = f"""Please provide comprehensive, current, and accurate information about: "{query}"
@@ -850,10 +808,6 @@ class AzureAIAgentsSearch:
             thread_url = f"{project_endpoint}/threads"
             thread_params = {"api-version": api_version}
             
-            st.write(f"DEBUG: Creating thread at {thread_url}")
-            st.write(f"DEBUG: Using API version: {api_version}")
-            st.write(f"DEBUG: Authentication token audience: {successful_scope}")
-            
             thread_response = requests.post(
                 thread_url, 
                 headers=headers, 
@@ -862,11 +816,8 @@ class AzureAIAgentsSearch:
                 timeout=30
             )
             
-            st.write(f"DEBUG: Thread creation response: {thread_response.status_code}")
-            
             if thread_response.status_code != 200:
                 error_details = thread_response.text
-                st.write(f"DEBUG: Thread creation error details: {error_details}")
                 
                 # Specific error handling
                 if thread_response.status_code == 401:
@@ -878,7 +829,7 @@ class AzureAIAgentsSearch:
                         model="Authentication Failed",
                         timestamp=datetime.now().isoformat(),
                         response_time=time.time() - start_time,
-                        error=f"Authentication failed (401). Token audience mismatch. Used scope: {successful_scope}. Please ensure your Service Principal has proper permissions for Azure AI Foundry. Details: {error_details}",
+                        error=f"Authentication failed (401). Token audience mismatch. Please ensure your Service Principal has proper permissions for Azure AI Foundry. Details: {error_details}",
                         has_grounding=False
                     )
                 elif thread_response.status_code == 403:
@@ -932,8 +883,6 @@ class AzureAIAgentsSearch:
                     error="No thread ID returned from Azure AI Foundry",
                     has_grounding=False
                 )
-            
-            st.write(f"DEBUG: Thread created successfully with ID: {thread_id}")
 
             # Step 2: Add message to thread
             message_url = f"{project_endpoint}/threads/{thread_id}/messages"
@@ -941,8 +890,6 @@ class AzureAIAgentsSearch:
                 "role": "user",
                 "content": enhanced_query
             }
-
-            st.write(f"DEBUG: Adding message to thread at {message_url}")
 
             message_response = requests.post(
                 message_url,
@@ -952,9 +899,7 @@ class AzureAIAgentsSearch:
                 timeout=30
             )
 
-            st.write(f"DEBUG: Message creation response: {message_response.status_code}")
             if message_response.status_code != 200:
-                st.write(f"DEBUG: Message creation error: {message_response.text}")
                 return SearchResult(
                     success=False,
                     response="",
@@ -967,17 +912,12 @@ class AzureAIAgentsSearch:
                     has_grounding=False
                 )
 
-            st.write("DEBUG: Message created successfully")
-
             # Step 3: Create and run the agent
             run_url = f"{project_endpoint}/threads/{thread_id}/runs"
             run_data = {
                 "assistant_id": agent_id,
                 "additional_instructions": f"""For this query about "{query}", please use the Bing grounding tool to search for the most current information available. This query would benefit from real-time web data. Always search for recent information when the query relates to current events, news, or time-sensitive topics."""
             }
-
-            st.write(f"DEBUG: Creating run at {run_url}")
-            st.write(f"DEBUG: Run data: {run_data}")
 
             run_response = requests.post(
                 run_url,
@@ -987,9 +927,7 @@ class AzureAIAgentsSearch:
                 timeout=30
             )
 
-            st.write(f"DEBUG: Run creation response: {run_response.status_code}")
             if run_response.status_code != 200:
-                st.write(f"DEBUG: Run creation error: {run_response.text}")
                 return SearchResult(
                     success=False,
                     response="",
@@ -1005,8 +943,6 @@ class AzureAIAgentsSearch:
             run_data_response = run_response.json()
             run_id = run_data_response.get("id")
             if not run_id:
-                st.write("DEBUG: No run ID in response")
-                st.write(f"DEBUG: Full run response: {run_data_response}")
                 return SearchResult(
                     success=False,
                     response="",
@@ -1019,14 +955,10 @@ class AzureAIAgentsSearch:
                     has_grounding=False
                 )
 
-            st.write(f"DEBUG: Run created successfully with ID: {run_id}")
-
-            # Step 4: Poll for completion with detailed debugging
+            # Step 4: Poll for completion
             run_status_url = f"{project_endpoint}/threads/{thread_id}/runs/{run_id}"
             max_polls = 60  # 2 minutes max
             poll_count = 0
-
-            st.write("DEBUG: Starting polling for run completion...")
 
             while poll_count < max_polls:
                 try:
@@ -1038,28 +970,16 @@ class AzureAIAgentsSearch:
                     )
                     
                     if status_response.status_code != 200:
-                        st.write(f"DEBUG: Status check failed: {status_response.status_code}")
-                        st.write(f"DEBUG: Status error: {status_response.text}")
                         break
                     
                     status_data = status_response.json()
                     status = status_data.get("status")
-                    st.write(f"DEBUG: Poll {poll_count + 1}: Run status = {status}")
-                    
-                    # Log additional status information
-                    if "last_error" in status_data and status_data["last_error"]:
-                        st.write(f"DEBUG: Last error: {status_data['last_error']}")
-                    
-                    if "required_action" in status_data and status_data["required_action"]:
-                        st.write(f"DEBUG: Required action: {status_data['required_action']}")
                     
                     if status == "completed":
-                        st.write("DEBUG: Run completed successfully!")
                         break
                     elif status in ["failed", "cancelled", "expired"]:
                         error_details = status_data.get("last_error", {})
                         error_msg = error_details.get("message", "Unknown error")
-                        st.write(f"DEBUG: Run failed with status '{status}': {error_msg}")
                         return SearchResult(
                             success=False,
                             response="",
@@ -1071,21 +991,15 @@ class AzureAIAgentsSearch:
                             error=f"Run failed with status '{status}': {error_msg}",
                             has_grounding=False
                         )
-                    elif status == "requires_action":
-                        required_action = status_data.get("required_action", {})
-                        st.write(f"DEBUG: Run requires action: {required_action}")
-                        # Note: In a complete implementation, you'd handle tool calls here
                     
                     time.sleep(2)
                     poll_count += 1
                     
-                except requests.RequestException as e:
-                    st.write(f"DEBUG: Polling error: {e}")
+                except requests.RequestException:
                     time.sleep(3)
                     poll_count += 1
 
             if poll_count >= max_polls:
-                st.write("DEBUG: Polling timed out!")
                 return SearchResult(
                     success=False,
                     response="",
@@ -1100,7 +1014,6 @@ class AzureAIAgentsSearch:
 
             # Step 5: Get messages from thread
             messages_url = f"{project_endpoint}/threads/{thread_id}/messages"
-            st.write(f"DEBUG: Getting messages from {messages_url}")
 
             messages_response = requests.get(
                 messages_url,
@@ -1109,9 +1022,7 @@ class AzureAIAgentsSearch:
                 timeout=30
             )
 
-            st.write(f"DEBUG: Messages response: {messages_response.status_code}")
             if messages_response.status_code != 200:
-                st.write(f"DEBUG: Messages error: {messages_response.text}")
                 return SearchResult(
                     success=False,
                     response="",
@@ -1125,9 +1036,8 @@ class AzureAIAgentsSearch:
                 )
 
             messages_data = messages_response.json()
-            st.write(f"DEBUG: Total messages received: {len(messages_data.get('data', []))}")
 
-            # Step 6: Parse response with detailed debugging
+            # Step 6: Parse response
             response_text = ""
             sources = []
             search_queries = [query]
@@ -1137,26 +1047,17 @@ class AzureAIAgentsSearch:
             messages_list = messages_data.get("data", [])
             assistant_messages = [msg for msg in messages_list if msg.get("role") == "assistant"]
 
-            st.write(f"DEBUG: Found {len(assistant_messages)} assistant messages")
-
             if assistant_messages:
                 latest_message = assistant_messages[-1]
-                st.write(f"DEBUG: Latest assistant message keys: {latest_message.keys()}")
-                
                 content_items = latest_message.get("content", [])
-                st.write(f"DEBUG: Found {len(content_items)} content items")
                 
-                for i, content_item in enumerate(content_items):
-                    st.write(f"DEBUG: Content item {i} type: {content_item.get('type')}")
-                    
+                for content_item in content_items:
                     if content_item.get("type") == "text":
                         text_data = content_item.get("text", {})
                         response_text = text_data.get("value", "")
-                        st.write(f"DEBUG: Extracted response text length: {len(response_text)}")
                         
                         # Extract citations/sources from annotations
                         annotations = text_data.get("annotations", [])
-                        st.write(f"DEBUG: Found {len(annotations)} annotations")
                         
                         for annotation in annotations:
                             annotation_type = annotation.get("type")
@@ -1175,7 +1076,7 @@ class AzureAIAgentsSearch:
                                 })
                                 has_grounding = True
                             elif annotation_type == "url_citation":
-                                # ADDED: Handle URL citations from Bing search
+                                # Handle URL citations from Bing search
                                 url_citation = annotation.get("url_citation", {})
                                 if url_citation:
                                     title = url_citation.get("title", url_citation.get("name", "Unknown Source"))
@@ -1188,13 +1089,6 @@ class AzureAIAgentsSearch:
                                         has_grounding = True
 
                         break
-            else:
-                st.write("DEBUG: No assistant messages found!")
-                st.write(f"DEBUG: All message roles: {[msg.get('role') for msg in messages_list]}")
-                
-                # Show full messages data for debugging
-                for i, msg in enumerate(messages_list):
-                    st.write(f"DEBUG: Message {i}: Role={msg.get('role')}, Content keys={list(msg.keys())}")
 
             # Heuristic grounding detection
             if not has_grounding and response_text:
@@ -1208,16 +1102,10 @@ class AzureAIAgentsSearch:
                 response_lower = response_text.lower()
                 if any(indicator in response_lower for indicator in grounding_indicators):
                     has_grounding = True
-                    st.write("DEBUG: Heuristic grounding detected")
 
             # Clean up response
             if not response_text:
                 response_text = "No response generated by the agent."
-                st.write("DEBUG: No response text found, using fallback message")
-
-            st.write(f"DEBUG: Final response length: {len(response_text)}")
-            st.write(f"DEBUG: Final sources count: {len(sources)}")
-            st.write(f"DEBUG: Final has_grounding: {has_grounding}")
 
             response_time = time.time() - start_time
 
@@ -1234,7 +1122,6 @@ class AzureAIAgentsSearch:
 
         
         except Exception as e:
-            st.write(f"DEBUG: Unexpected error: {str(e)}")
             return SearchResult(
                 success=False,
                 response="",
@@ -1246,9 +1133,6 @@ class AzureAIAgentsSearch:
                 error=str(e),
                 has_grounding=False
             )
-
-
-
 
 def add_citations_to_text(response_result: SearchResult) -> str:
     """Add inline citations to the response text for Gemini only"""
