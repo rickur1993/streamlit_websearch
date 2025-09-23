@@ -105,48 +105,155 @@ class GeminiGroundingSearch:
             return "No SDK Available", "None", False
     
     @staticmethod
+    def create_enhanced_prompt(query: str) -> str:
+        """Create comprehensive, business intelligence focused prompt"""
+        return f"""
+        You are a professional research analyst and business intelligence expert providing comprehensive analysis for: "{query}"
+        
+        RESEARCH REQUIREMENTS:
+        - Use Google Search grounding to find the most current 2024-2025 data and developments
+        - Include specific quantitative metrics (financial figures, percentages, exact dates, market data)
+        - Provide detailed company-by-company or topic-by-topic analysis with supporting evidence
+        - Include recent regulatory changes, market trends, and strategic developments
+        - User context: India-based professional in pharmaceutical and finance sectors
+        
+        RESPONSE STRUCTURE (MANDATORY):
+        
+        ## Executive Summary
+        2-3 sentences highlighting key findings with specific metrics and recent developments.
+        
+        ## Detailed Analysis
+        ### [Primary Topic/Company 1]
+        - Current performance data with exact figures and percentages
+        - Recent developments in last 6-12 months with dates
+        - Key growth drivers and strategic initiatives
+        - Market position and competitive advantages
+        
+        ### [Primary Topic/Company 2] 
+        - [Same detailed structure as above]
+        
+        ## Key Metrics & Financial Data
+        - Specific revenue figures, profit margins, growth rates
+        - Stock performance data with exact percentage changes
+        - Market capitalization and valuation metrics
+        - Regulatory compliance and approval data
+        
+        ## Recent Developments (2024-2025)
+        - Latest regulatory changes with specific dates
+        - New product launches, acquisitions, partnerships
+        - Market trends and industry shifts
+        
+        ## Strategic Outlook & Implications
+        - Forward-looking analysis and growth projections
+        - Risk factors and mitigation strategies
+        - Investment considerations and recommendations
+        
+        CRITICAL REQUIREMENTS:
+        - Use Google Search grounding for ALL factual claims
+        - Include specific dates, figures, and percentages throughout
+        - Minimum 600-800 words for comprehensive coverage
+        - Structure as professional business intelligence report
+        - Prioritize Indian market context and regulatory environment
+        
+        This query requires comprehensive web search to provide current, detailed business intelligence.
+        """
+
+    @staticmethod
+    def _is_quality_source(uri: str, title: str) -> bool:
+        """Filter for high-quality, authoritative sources"""
+        quality_domains = [
+            'reuters.com', 'bloomberg.com', 'wsj.com', 'ft.com', 'cnbc.com',
+            'economictimes.com', 'moneycontrol.com', 'livemint.com',
+            'business-standard.com', 'financialexpress.com',
+            'sebi.gov.in', 'rbi.org.in', 'cdsco.gov.in', 'fda.gov',
+            'investopedia.com', 'morningstar.com', 'yahoo.com/finance',
+            'google.com/finance', 'marketwatch.com', 'seeking-alpha.com'
+        ]
+        
+        uri_lower = uri.lower()
+        if any(domain in uri_lower for domain in quality_domains):
+            return True
+            
+        quality_indicators = [
+            'earnings', 'financial', 'quarterly', 'annual report', 'sec filing',
+            'regulatory', 'approval', 'fda', 'sebi', 'rbi', 'cdsco',
+            'stock price', 'market', 'investor', 'analysis'
+        ]
+        
+        title_lower = title.lower()
+        return any(indicator in title_lower for indicator in quality_indicators)
+
+    @staticmethod  
+    def _post_process_response(response_text: str) -> str:
+        """Enhance response structure if agent didn't follow instructions properly"""
+        if not response_text or "## Executive Summary" in response_text:
+            return response_text
+            
+        lines = response_text.split('\n')
+        if len(lines) > 2 and not response_text.startswith('##'):
+            structured_response = f"## Executive Summary\n\n{lines[0]}\n\n## Detailed Analysis\n\n"
+            structured_response += '\n'.join(lines[1:])
+            return structured_response
+            
+        return response_text
+
+    @staticmethod
     def search_with_new_sdk(query: str) -> SearchResult:
-        """Optimized search using new SDK with Gemini 2.5 Flash only"""
+        """Enhanced search using new SDK with improved prompting and quality filtering"""
         start_time = time.time()
         try:
-            # Configure client once
             client = genai.Client(api_key=GEMINI_API_KEY)
             
-            # Simplified grounding tool
-            grounding_tool = types.Tool(google_search=types.GoogleSearch())
+            # Enhanced grounding tool with dynamic retrieval
+            grounding_tool = types.Tool(
+                google_search=types.GoogleSearch(
+                    dynamic_retrieval_config=types.DynamicRetrievalConfig(
+                        mode="MODE_DYNAMIC",
+                        dynamic_threshold=0.7  # Higher threshold for more grounding
+                    )
+                )
+            )
             
-            # Minimal config for speed
+            # Enhanced config for better performance
             config = types.GenerateContentConfig(
                 tools=[grounding_tool],
                 response_modalities=['TEXT'],
-                # Disable reasoning to reduce latency
+                system_instruction="""You are an expert business analyst specializing in Indian pharmaceutical 
+                and finance markets. Always use Google Search grounding for current information.
+                
+                MANDATORY BEHAVIORS:
+                1. Always search for current 2024-2025 information first
+                2. Include specific quantitative data in every response
+                3. Structure responses as professional business intelligence reports
+                4. Provide detailed company-specific analysis
+                5. Include regulatory and compliance information for Indian context
+                
+                RESPONSE QUALITY STANDARDS:
+                - Minimum 600 words for comprehensive queries
+                - Include exact figures, percentages, and dates
+                - Provide strategic insights and forward-looking analysis
+                - Structure with clear headings and professional formatting""",
+                generation_config=types.GenerationConfig(
+                    temperature=0.1,  # Lower temperature for more factual responses
+                    top_p=0.8,        # More focused responses
+                    top_k=20,         # Balanced diversity
+                    max_output_tokens=4000  # Allow longer responses
+                )
             )
             
-            # Enhanced prompt for consistency
-            optimized_query = f"""Please provide comprehensive, current, and accurate information about: "{query}"
-
-            I need detailed information including:
-            - Current facts and latest developments
-            - Key insights and important details
-            - Recent changes or updates (prioritize 2024/2025 information)
-            - Multiple perspectives when relevant
-            - Specific examples and evidence
-            - User location is India
-
-            Please structure your response clearly with proper organization and cite your sources."""
+            # Use enhanced prompt instead of basic query
+            enhanced_prompt = GeminiGroundingSearch.create_enhanced_prompt(query)
             
-            # Use only Gemini 2.5 Flash (fastest model)
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
-                contents=optimized_query,
+                contents=enhanced_prompt,
                 config=config
             )
             
-            
             response_time = time.time() - start_time
-            model_used = "gemini-2.5-flash (New SDK)"
+            model_used = "gemini-2.5-flash-enhanced (New SDK)"
             
-            # Fast metadata extraction with error handling
+            # Enhanced metadata extraction with quality filtering
             sources = []
             search_queries = []
             has_grounding = False
@@ -158,49 +265,43 @@ class GeminiGroundingSearch:
                     metadata = response.candidates[0].grounding_metadata
                     has_grounding = True
                     
-                    # Extract search queries
                     if hasattr(metadata, 'web_search_queries'):
                         search_queries = list(metadata.web_search_queries)
                     
-                    # Extract sources efficiently
                     if hasattr(metadata, 'grounding_chunks'):
-                        total_chunks = len(list(metadata.grounding_chunks))
-                        
-                        # Group chunks by source and limit to 15 unique sources
                         source_to_chunks = {}
                         unique_sources_count = 0
                         
                         for chunk in metadata.grounding_chunks:
-                            if hasattr(chunk, 'web') and chunk.web and chunk.web.uri:
+                            if (hasattr(chunk, 'web') and chunk.web and chunk.web.uri and 
+                                unique_sources_count < 15):
+                                
                                 uri = chunk.web.uri
+                                title = getattr(chunk.web, 'title', 'Unknown')
                                 
-                                # If we haven't seen this source before and haven't reached limit
-                                if uri not in source_to_chunks and unique_sources_count < 15:
-                                    source_to_chunks[uri] = {
-                                        'title': getattr(chunk.web, 'title', 'Unknown'),
-                                        'uri': uri,
-                                        'chunks': []
-                                    }
-                                    unique_sources_count += 1
-                                
-                                # Add chunk to this source (if source is in our limited set)
-                                if uri in source_to_chunks:
+                                # Filter for quality sources
+                                if GeminiGroundingSearch._is_quality_source(uri, title):
+                                    if uri not in source_to_chunks:
+                                        source_to_chunks[uri] = {
+                                            'title': title,
+                                            'uri': uri,
+                                            'chunks': []
+                                        }
+                                        unique_sources_count += 1
+                                    
                                     source_to_chunks[uri]['chunks'].append(chunk)
                         
-                        # Extract sources from the limited set
                         for source_data in source_to_chunks.values():
                             sources.append({
                                 'title': source_data['title'],
                                 'uri': source_data['uri']
                             })
-                        
-                        print(f"Debug: Total chunks: {total_chunks}, Unique sources found: {len(source_to_chunks)}, Total chunks from limited sources: {sum(len(s['chunks']) for s in source_to_chunks.values())}")
-                        
-            except Exception:
-                # Silently continue if metadata extraction fails
+                            
+            except Exception as e:
+                print(f"Metadata extraction error: {e}")
                 pass
             
-            # Extract response text efficiently
+            # Extract response text
             response_text = ""
             if hasattr(response, 'text'):
                 response_text = response.text
@@ -209,6 +310,9 @@ class GeminiGroundingSearch:
                     part.text for part in response.candidates[0].content.parts 
                     if hasattr(part, 'text')
                 ])
+            
+            # Post-process response for better structure
+            response_text = GeminiGroundingSearch._post_process_response(response_text)
             
             return SearchResult(
                 success=True,
@@ -227,12 +331,13 @@ class GeminiGroundingSearch:
                 response="",
                 sources=[],
                 search_queries=[],
-                model="gemini-2.5-flash (Error)",
+                model="gemini-2.5-flash-enhanced (Error)",
                 timestamp=datetime.now().isoformat(),
                 response_time=time.time() - start_time,
                 error=str(e),
                 has_grounding=False
             )
+
     
     @staticmethod
     def search_with_legacy_sdk(query: str) -> SearchResult:
