@@ -204,35 +204,34 @@ class GeminiGroundingSearch:
         try:
             client = genai.Client(api_key=GEMINI_API_KEY)
             
-            # Enhanced grounding tool with dynamic retrieval
-            grounding_tool = types.Tool(
-                google_search=types.GoogleSearch(
-                    dynamic_retrieval_config=types.DynamicRetrievalConfig(
-                        mode="MODE_DYNAMIC",
-                        dynamic_threshold=0.7  # Higher threshold for more grounding
-                    )
-                )
-            )
+            # Simplified grounding tool (removed unsupported dynamic_retrieval_config)
+            grounding_tool = types.Tool(google_search=types.GoogleSearch())
             
             # Enhanced config for better performance
             config = types.GenerateContentConfig(
                 tools=[grounding_tool],
                 response_modalities=['TEXT'],
-                system_instruction="""You are an expert business analyst specializing in Indian pharmaceutical 
-                and finance markets. Always use Google Search grounding for current information.
+                system_instruction="""You are an expert business analyst and researcher specializing in Indian pharmaceutical 
+                and finance markets. You MUST use Google Search grounding extensively for current information.
                 
-                MANDATORY BEHAVIORS:
-                1. Always search for current 2024-2025 information first
-                2. Include specific quantitative data in every response
-                3. Structure responses as professional business intelligence reports
-                4. Provide detailed company-specific analysis
-                5. Include regulatory and compliance information for Indian context
+                CRITICAL SEARCH BEHAVIOR:
+                - Always perform multiple Google searches for comprehensive coverage
+                - Search for 2024-2025 specific data and recent developments
+                - Include specific quantitative data in every response
+                - Structure responses as professional business intelligence reports
+                - Provide detailed company-specific or sector-specific analysis
+                - Include regulatory and compliance information for Indian context
+                - Use authoritative financial and pharmaceutical sources
+                - Cross-verify information from multiple sources
                 
-                RESPONSE QUALITY STANDARDS:
-                - Minimum 600 words for comprehensive queries
-                - Include exact figures, percentages, and dates
+                RESPONSE REQUIREMENTS:
+                - Minimum 600-800 words for comprehensive queries
+                - Include exact figures, percentages, and dates throughout
                 - Provide strategic insights and forward-looking analysis
-                - Structure with clear headings and professional formatting""",
+                - Structure with clear headings and professional formatting
+                - Focus on actionable business intelligence for investment decisions
+                
+                You must ground ALL factual claims with web search. This is mandatory.""",
                 generation_config=types.GenerationConfig(
                     temperature=0.1,  # Lower temperature for more factual responses
                     top_p=0.8,        # More focused responses
@@ -271,6 +270,7 @@ class GeminiGroundingSearch:
                     if hasattr(metadata, 'grounding_chunks'):
                         source_to_chunks = {}
                         unique_sources_count = 0
+                        quality_sources_count = 0
                         
                         for chunk in metadata.grounding_chunks:
                             if (hasattr(chunk, 'web') and chunk.web and chunk.web.uri and 
@@ -279,23 +279,36 @@ class GeminiGroundingSearch:
                                 uri = chunk.web.uri
                                 title = getattr(chunk.web, 'title', 'Unknown')
                                 
-                                # Filter for quality sources
-                                if GeminiGroundingSearch._is_quality_source(uri, title):
-                                    if uri not in source_to_chunks:
-                                        source_to_chunks[uri] = {
-                                            'title': title,
-                                            'uri': uri,
-                                            'chunks': []
-                                        }
-                                        unique_sources_count += 1
-                                    
-                                    source_to_chunks[uri]['chunks'].append(chunk)
+                                # Check if it's a quality source
+                                is_quality = GeminiGroundingSearch._is_quality_source(uri, title)
+                                
+                                if uri not in source_to_chunks:
+                                    source_to_chunks[uri] = {
+                                        'title': title,
+                                        'uri': uri,
+                                        'chunks': [],
+                                        'is_quality': is_quality
+                                    }
+                                    unique_sources_count += 1
+                                    if is_quality:
+                                        quality_sources_count += 1
+                                
+                                source_to_chunks[uri]['chunks'].append(chunk)
                         
-                        for source_data in source_to_chunks.values():
+                        # Sort sources by quality first
+                        quality_sources = [s for s in source_to_chunks.values() if s['is_quality']]
+                        other_sources = [s for s in source_to_chunks.values() if not s['is_quality']]
+                        
+                        # Prioritize quality sources
+                        all_sources = quality_sources + other_sources[:15-len(quality_sources)]
+                        
+                        for source_data in all_sources:
                             sources.append({
                                 'title': source_data['title'],
                                 'uri': source_data['uri']
                             })
+                        
+                        print(f"Debug: Quality sources: {quality_sources_count}/{len(source_to_chunks)}")
                             
             except Exception as e:
                 print(f"Metadata extraction error: {e}")
@@ -338,85 +351,86 @@ class GeminiGroundingSearch:
                 has_grounding=False
             )
 
-    
-    @staticmethod
-    def search_with_legacy_sdk(query: str) -> SearchResult:
-        """Optimized legacy SDK search with Gemini 2.5 Flash only"""
-        start_time = time.time()
-        try:
-            genai_old.configure(api_key=GEMINI_API_KEY)
-            
-            # Enhanced prompt for consistency
-            prompt = f"""Please provide comprehensive, current, and accurate information about: "{query}"
 
-            I need detailed information including:
-            - Current facts and latest developments
-            - Key insights and important details
-            - Recent changes or updates (prioritize 2024/2025 information)
-            - Multiple perspectives when relevant
-            - Specific examples and evidence
-            - User location is India
-
-            Please structure your response clearly with proper organization and cite your sources."""
-            
-            # Use only Gemini 2.5 Flash
-            model = genai_old.GenerativeModel("gemini-2.5-flash")
-            
-            # Try grounding first, fallback to basic
+        
+        @staticmethod
+        def search_with_legacy_sdk(query: str) -> SearchResult:
+            """Optimized legacy SDK search with Gemini 2.5 Flash only"""
+            start_time = time.time()
             try:
-                if TOOL_CONFIG_AVAILABLE:
-                    response = model.generate_content(
-                        prompt,
-                        tools=[{'google_search_retrieval': {}}]
-                    )
-                    model_used = "gemini-2.5-flash (Legacy Grounding)"
-                else:
+                genai_old.configure(api_key=GEMINI_API_KEY)
+                
+                # Enhanced prompt for consistency
+                prompt = f"""Please provide comprehensive, current, and accurate information about: "{query}"
+
+                I need detailed information including:
+                - Current facts and latest developments
+                - Key insights and important details
+                - Recent changes or updates (prioritize 2024/2025 information)
+                - Multiple perspectives when relevant
+                - Specific examples and evidence
+                - User location is India
+
+                Please structure your response clearly with proper organization and cite your sources."""
+                
+                # Use only Gemini 2.5 Flash
+                model = genai_old.GenerativeModel("gemini-2.5-flash")
+                
+                # Try grounding first, fallback to basic
+                try:
+                    if TOOL_CONFIG_AVAILABLE:
+                        response = model.generate_content(
+                            prompt,
+                            tools=[{'google_search_retrieval': {}}]
+                        )
+                        model_used = "gemini-2.5-flash (Legacy Grounding)"
+                    else:
+                        response = model.generate_content(prompt)
+                        model_used = "gemini-2.5-flash (Legacy Basic)"
+                except Exception:
+                    # Fallback to basic
                     response = model.generate_content(prompt)
                     model_used = "gemini-2.5-flash (Legacy Basic)"
-            except Exception:
-                # Fallback to basic
-                response = model.generate_content(prompt)
-                model_used = "gemini-2.5-flash (Legacy Basic)"
-            
-            response_time = time.time() - start_time
-            
-            # Fast source extraction
-            sources = []
-            search_queries = []
-            has_grounding = False
-            
-            try:
-                if (response.candidates and 
-                    hasattr(response.candidates[0], 'grounding_metadata')):
-                    has_grounding = True
-                    # Add legacy source extraction if needed
-            except Exception:
-                pass
-            
-            return SearchResult(
-                success=True,
-                response=response.text,
-                sources=sources,
-                search_queries=search_queries,
-                model=model_used,
-                timestamp=datetime.now().isoformat(),
-                response_time=response_time,
-                has_grounding=has_grounding
-            )
-            
-        except Exception as e:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="gemini-2.5-flash (Legacy Error)",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error=str(e),
-                has_grounding=False
-            )
-    
+                
+                response_time = time.time() - start_time
+                
+                # Fast source extraction
+                sources = []
+                search_queries = []
+                has_grounding = False
+                
+                try:
+                    if (response.candidates and 
+                        hasattr(response.candidates[0], 'grounding_metadata')):
+                        has_grounding = True
+                        # Add legacy source extraction if needed
+                except Exception:
+                    pass
+                
+                return SearchResult(
+                    success=True,
+                    response=response.text,
+                    sources=sources,
+                    search_queries=search_queries,
+                    model=model_used,
+                    timestamp=datetime.now().isoformat(),
+                    response_time=response_time,
+                    has_grounding=has_grounding
+                )
+                
+            except Exception as e:
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=[],
+                    model="gemini-2.5-flash (Legacy Error)",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=time.time() - start_time,
+                    error=str(e),
+                    has_grounding=False
+                )
+        
     @staticmethod
     def search(query: str) -> SearchResult:
         """Main search method using the best available SDK"""
