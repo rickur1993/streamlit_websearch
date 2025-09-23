@@ -199,12 +199,12 @@ class GeminiGroundingSearch:
 
     @staticmethod
     def search_with_new_sdk(query: str) -> SearchResult:
-        """Enhanced search using new SDK with improved prompting and quality filtering"""
+        """Enhanced search using new SDK with corrected grounding tool configuration"""
         start_time = time.time()
         try:
             client = genai.Client(api_key=GEMINI_API_KEY)
             
-            # Simplified grounding tool (removed unsupported dynamic_retrieval_config)
+            # Fixed grounding tool (removed unsupported dynamic_retrieval_config)
             grounding_tool = types.Tool(google_search=types.GoogleSearch())
             
             # Enhanced config for better performance
@@ -351,10 +351,9 @@ class GeminiGroundingSearch:
                 has_grounding=False
             )
 
-
         
-        @staticmethod
-        def search_with_legacy_sdk(query: str) -> SearchResult:
+    @staticmethod
+    def search_with_legacy_sdk(query: str) -> SearchResult:
             """Optimized legacy SDK search with Gemini 2.5 Flash only"""
             start_time = time.time()
             try:
