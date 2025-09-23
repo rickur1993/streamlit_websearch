@@ -562,6 +562,62 @@ class AzureAIAgentsSearch:
     """Azure AI Foundry Agents with Bing Search using REST API with enhanced debugging and authentication"""
     
     @staticmethod
+    def enhance_query_for_azure(query: str) -> str:
+        """Create comprehensive, structured prompt for Azure AI Agents"""
+        return f"""
+        You are a professional research analyst and business intelligence expert. Provide a comprehensive, 
+        detailed analysis for: "{query}"
+        
+        RESEARCH REQUIREMENTS:
+        - Search for the most current information available (prioritize 2024-2025 data)
+        - Include specific financial figures, percentages, dates, and quantitative metrics
+        - Provide company-by-company or topic-by-topic detailed breakdown
+        - Include recent developments, regulatory changes, and market trends
+        - Add strategic insights and forward-looking analysis
+        - Compare multiple perspectives and sources when relevant
+        - User location: India (prioritize Indian market context)
+        
+        RESPONSE STRUCTURE REQUIRED:
+        1. **Executive Summary** (2-3 sentences with key findings)
+        2. **Detailed Analysis** with subheadings for each major point
+        3. **Key Metrics & Data** (use specific numbers, percentages, dates)
+        4. **Recent Developments** (last 6-12 months)
+        5. **Strategic Implications** and outlook
+        6. **Sources & Citations** (properly reference all claims)
+        
+        SEARCH INSTRUCTION: Use Bing grounding tool to find the most current, authoritative sources 
+        including financial reports, regulatory filings, industry analyses, and recent news.
+        """
+
+    
+    def create_enhanced_instructions(query: str) -> str:
+        """Create detailed additional instructions for the Azure AI Agent"""
+        return f"""
+        CRITICAL SEARCH INSTRUCTIONS for query: "{query}"
+
+        **MANDATORY ACTIONS:**
+        1. MUST use Bing search grounding tool for current information
+        2. MUST search for 2024-2025 specific data and developments  
+        3. MUST include quantitative metrics (percentages, figures, dates)
+        4. MUST provide company-specific or sector-specific breakdown
+        5. MUST cite authoritative sources for all claims
+
+        **CONTENT DEPTH REQUIREMENTS:**
+        - Minimum 500-800 words for comprehensive coverage
+        - Include specific financial data, market metrics, regulatory updates
+        - Provide both current performance data AND forward-looking insights
+        - Compare multiple companies/aspects when relevant
+        
+        **BUSINESS INTELLIGENCE FORMAT:**
+        Structure the response as a professional business intelligence report suitable for:
+        - Investment decision-making
+        - Strategic business planning  
+        - Regulatory compliance assessment
+        - Market analysis and competitive intelligence
+        
+        This query requires REAL-TIME web search data. Do not rely on training data alone.
+        """
+
     
     def search(query: str) -> SearchResult:
         """Search using Azure AI Foundry Agent Service with Bing grounding via REST API"""
@@ -789,17 +845,9 @@ class AzureAIAgentsSearch:
                     )
             
             # Enhanced query for better results
-            enhanced_query = f"""Please provide comprehensive, current, and accurate information about: "{query}"
-            
-            I need detailed information including:
-            - Current facts and latest developments
-            - Key insights and important details  
-            - Recent changes or updates (prioritize 2024-2025 information)
-            - Multiple perspectives when relevant
-            - Specific examples and evidence
-            - User location is India
-            
-            Please structure your response clearly with proper organization and cite your sources."""
+            enhanced_query = AzureAIAgentsSearch.enhance_query_for_azure(query)
+
+            enhanced_instructions = AzureAIAgentsSearch.create_enhanced_instructions(query)
             
             # Use the correct API version for Azure AI Foundry Agent Service
             api_version = "2025-05-01"  # Stable version for Agent Service
@@ -916,7 +964,7 @@ class AzureAIAgentsSearch:
             run_url = f"{project_endpoint}/threads/{thread_id}/runs"
             run_data = {
                 "assistant_id": agent_id,
-                "additional_instructions": f"""For this query about "{query}", please use the Bing grounding tool to search for the most current information available. This query would benefit from real-time web data. Always search for recent information when the query relates to current events, news, or time-sensitive topics."""
+                "additional_instructions": enhanced_instructions
             }
 
             run_response = requests.post(
