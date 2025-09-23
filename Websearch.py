@@ -207,7 +207,7 @@ class GeminiGroundingSearch:
             # Fixed grounding tool (removed unsupported dynamic_retrieval_config)
             grounding_tool = types.Tool(google_search=types.GoogleSearch())
             
-            # Enhanced config for better performance
+            # Simplified config to avoid validation errors
             config = types.GenerateContentConfig(
                 tools=[grounding_tool],
                 response_modalities=['TEXT'],
@@ -231,13 +231,7 @@ class GeminiGroundingSearch:
                 - Structure with clear headings and professional formatting
                 - Focus on actionable business intelligence for investment decisions
                 
-                You must ground ALL factual claims with web search. This is mandatory.""",
-                generation_config=types.GenerationConfig(
-                    temperature=0.1,  # Lower temperature for more factual responses
-                    top_p=0.8,        # More focused responses
-                    top_k=20,         # Balanced diversity
-                    max_output_tokens=4000  # Allow longer responses
-                )
+                You must ground ALL factual claims with web search. This is mandatory."""
             )
             
             # Use enhanced prompt instead of basic query
