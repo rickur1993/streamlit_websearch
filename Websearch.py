@@ -243,7 +243,7 @@ class GeminiGroundingSearch:
             enhanced_prompt = GeminiGroundingSearch.create_enhanced_prompt(query)
             
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-2.5-flash-lite",
                 contents=enhanced_prompt,
                 config=config
             )
