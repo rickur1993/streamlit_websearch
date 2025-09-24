@@ -151,7 +151,7 @@ class GeminiGroundingSearch:
         CRITICAL REQUIREMENTS:
         - Use Google Search grounding for ALL factual claims
         - Include specific dates, figures, and percentages throughout
-        - Minimum 600-800 words for comprehensive coverage
+        - Minimum 400-600 words for comprehensive coverage
         - Structure as professional business intelligence report
         - Prioritize Indian market context and regulatory environment
         
@@ -224,12 +224,16 @@ class GeminiGroundingSearch:
                 - Use authoritative financial and pharmaceutical sources
                 - Cross-verify information from multiple sources
                 
-                RESPONSE REQUIREMENTS:
-                - Minimum 600-800 words for comprehensive queries
-                - Include exact figures, percentages, and dates throughout
-                - Provide strategic insights and forward-looking analysis
-                - Structure with clear headings and professional formatting
-                - Focus on actionable business intelligence for investment decisions
+                
+                RESPONSE STRUCTURE REQUIRED:
+                1. **Executive Summary** (2-3 sentences with key findings)
+                2. **Detailed Analysis** with subheadings for each major point
+                3. **Key Metrics & Data** (use specific numbers, percentages, dates)
+                4. **Recent Developments** (last 6-12 months)
+                5. **Strategic Implications** and outlook
+                6. **Summary Table** ( wherever applicable )
+                7. **Actionable Recommendation** ( wherever applicable )
+                8. **Sources & Citations** (properly reference all claims)
                 
                 You must ground ALL factual claims with web search. This is mandatory."""
             )
@@ -695,7 +699,9 @@ class AzureAIAgentsSearch:
         3. **Key Metrics & Data** (use specific numbers, percentages, dates)
         4. **Recent Developments** (last 6-12 months)
         5. **Strategic Implications** and outlook
-        6. **Sources & Citations** (properly reference all claims)
+        6. **Summary Table** ( wherever applicable )
+        7. **Actionable Recommendation** ( wherever applicable )
+        8. **Sources & Citations** (properly reference all claims)
         
         SEARCH INSTRUCTION: Use Bing grounding tool to find the most current, authoritative sources 
         including financial reports, regulatory filings, industry analyses, and recent news.
@@ -726,7 +732,12 @@ class AzureAIAgentsSearch:
         - Strategic business planning  
         - Regulatory compliance assessment
         - Market analysis and competitive intelligence
-        
+
+        **ADDITIONAL REQUIREMENTS:**
+        - Include visual aids (charts, graphs) where applicable
+        - Ensure clarity and conciseness in language
+        - Tailor content to the target audience's expertise level
+
         This query requires REAL-TIME web search data. Do not rely on training data alone.
         """
 
