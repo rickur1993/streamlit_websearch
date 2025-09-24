@@ -272,7 +272,7 @@ class GeminiGroundingSearch:
                         
                         for chunk in metadata.grounding_chunks:
                             if (hasattr(chunk, 'web') and chunk.web and chunk.web.uri and 
-                                unique_sources_count < 15):
+                                unique_sources_count < 11):
                                 
                                 uri = chunk.web.uri
                                 title = getattr(chunk.web, 'title', 'Unknown')
@@ -298,7 +298,7 @@ class GeminiGroundingSearch:
                         other_sources = [s for s in source_to_chunks.values() if not s['is_quality']]
                         
                         # Prioritize quality sources
-                        all_sources = quality_sources + other_sources[:15-len(quality_sources)]
+                        all_sources = quality_sources + other_sources[:11-len(quality_sources)]
                         
                         for source_data in all_sources:
                             sources.append({
