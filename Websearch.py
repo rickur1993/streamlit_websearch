@@ -151,9 +151,10 @@ class GeminiGroundingSearch:
         CRITICAL REQUIREMENTS:
         - Use Google Search grounding for ALL factual claims
         - Include specific dates, figures, and percentages throughout
-        - Minimum 400-600 words for comprehensive coverage
+        - Minimum 400 words for comprehensive coverage
         - Structure as professional business intelligence report
         - Prioritize Indian market context and regulatory environment
+        -Less verbose and more to the point
         
         This query requires comprehensive web search to provide current, detailed business intelligence.
         """
@@ -233,7 +234,7 @@ class GeminiGroundingSearch:
                 5. **Strategic Implications** and outlook
                 6. **Summary Table** ( wherever applicable )
                 7. **Actionable Recommendation** ( wherever applicable )
-                8. **Sources & Citations** (properly reference all claims)
+                
                 
                 You must ground ALL factual claims with web search. This is mandatory."""
             )
