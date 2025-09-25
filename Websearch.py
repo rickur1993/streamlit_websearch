@@ -476,6 +476,14 @@ Provide structural analysis:"""
         
         prompt = f"""IMPORTANT: Use Google Search to find current 2024-2025 information for: "{query}"
 
+<critical_instructions>
+- Write each numbered section ONLY ONCE
+- Do NOT duplicate any headers or content
+- Use clean, inline citations like [source.com] not numbered lists
+- Target length: ~{target_length} words
+- Structure as professional research report
+</critical_instructions>
+
 <requirements>
 - Search for current data and recent developments
 - Include specific details: dates, figures, percentages, names, locations
@@ -488,12 +496,14 @@ Provide structural analysis:"""
 {headers_structure}
 </response_structure>
 
-<formatting>
-- Use ## for numbered headers (e.g., "## 1. Background & Root Causes")
+<formatting_rules>
+- Use ## for numbered headers EXACTLY ONCE (e.g., "## 1. Background & Root Causes")
 - Include bullet points for detailed information
 - Add specific data points with exact figures and dates
-- Maintain professional, authoritative tone
-</formatting>
+- Use clean source citations in parentheses: (source.com) or [source.com]
+- Do NOT repeat sections or headers
+- Maintain professional, authoritative tone throughout
+</formatting_rules>
 
 Generate comprehensive, current, well-structured content."""
 
@@ -506,6 +516,14 @@ Generate comprehensive, current, well-structured content."""
         content_type = analysis.get('content_type', 'general_comprehensive')
         
         base_instruction = """You are an expert research analyst providing comprehensive information.
+
+CRITICAL FORMATTING RULES:
+- Write each section header ONLY ONCE
+- Do NOT duplicate any content or sections
+- Use clean inline citations: (reuters.com) or [cnn.com] 
+- Do NOT use numbered citation lists like [1, 2, 3, 4]
+- Structure responses with clear numbered sections
+- Each section should flow logically without repetition
 
 CORE REQUIREMENTS:
 - Use Google Search grounding for ALL factual claims
@@ -558,7 +576,7 @@ COMPREHENSIVE ANALYSIS:
 
     @staticmethod
     def _extract_sources_simple(response) -> List[Dict[str, str]]:
-        """Extract sources without complex processing"""
+        """Extract sources with cleaner formatting"""
         
         sources = []
         try:
@@ -568,12 +586,25 @@ COMPREHENSIVE ANALYSIS:
                 metadata = response.candidates[0].grounding_metadata
                 
                 if hasattr(metadata, 'grounding_chunks'):
+                    seen_urls = set()
                     for chunk in metadata.grounding_chunks:
                         if (hasattr(chunk, 'web') and chunk.web and chunk.web.uri):
                             uri = chunk.web.uri
                             title = getattr(chunk.web, 'title', 'Unknown')
-                            sources.append({'title': title, 'uri': uri})
                             
+                            # Clean up the title and URL
+                            if uri not in seen_urls:
+                                # Clean title - remove extra text
+                                clean_title = title.split(' - ')[0].split(' | ')[0]
+                                if len(clean_title) > 60:
+                                    clean_title = clean_title[:60] + "..."
+                                
+                                sources.append({
+                                    'title': clean_title,
+                                    'uri': uri
+                                })
+                                seen_urls.add(uri)
+                                
                             if len(sources) >= 10:  # Limit sources
                                 break
                         
@@ -581,6 +612,8 @@ COMPREHENSIVE ANALYSIS:
             print(f"Source extraction error: {e}")
         
         return sources
+
+    
 
     @staticmethod
     def _extract_search_queries_simple(response) -> List[str]:
@@ -603,33 +636,53 @@ COMPREHENSIVE ANALYSIS:
 
     @staticmethod
     def _post_process_simple(response_text: str, analysis: Dict[str, str]) -> str:
-        """Simple post-processing without regex"""
+        """Simple post-processing without regex - fixed to prevent duplication"""
         
         if not response_text:
             return response_text
         
-        # Simple formatting improvements
+        # Split into lines and remove any existing duplicates
         lines = response_text.split('\n')
         processed_lines = []
+        seen_headers = set()
         
-        for line in lines:
-            line = line.strip()
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
             
-            # Simple header detection without regex
-            if line and (line.startswith('1.') or line.startswith('2.') or line.startswith('3.') or 
-                        line.startswith('4.') or line.startswith('5.') or line.startswith('6.') or
-                        line.startswith('7.') or line.startswith('8.')):
+            # Skip empty lines at the beginning
+            if not line and not processed_lines:
+                i += 1
+                continue
+            
+            # Check for numbered headers
+            if line and any(line.startswith(f'{j}.') for j in range(1, 10)):
+                # Check if this header was already seen
+                header_key = line.split('.')[0] + '.'
+                if header_key in seen_headers:
+                    # Skip this duplicate section entirely
+                    i += 1
+                    # Skip until next header or end
+                    while i < len(lines) and not any(lines[i].strip().startswith(f'{k}.') for k in range(1, 10)):
+                        i += 1
+                    continue
+                
+                seen_headers.add(header_key)
+                
+                # Format header properly
                 if not line.startswith('##'):
                     processed_lines.append(f"## {line}")
                 else:
                     processed_lines.append(line)
             else:
                 processed_lines.append(line)
+            
+            i += 1
         
         # Reconstruct and clean up
         formatted_response = '\n'.join(processed_lines)
         
-        # Simple spacing fixes
+        # Fix spacing
         formatted_response = formatted_response.replace('\n## ', '\n\n## ')
         
         # Remove excessive newlines
@@ -637,6 +690,7 @@ COMPREHENSIVE ANALYSIS:
             formatted_response = formatted_response.replace('\n\n\n', '\n\n')
         
         return formatted_response.strip()
+
 
    
 
