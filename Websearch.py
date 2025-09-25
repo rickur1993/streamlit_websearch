@@ -133,6 +133,7 @@ class GeminiGroundingSearch:
         return any(indicator in title_lower for indicator in quality_indicators)
 
     @staticmethod
+    
     def search_with_new_sdk(query: str) -> SearchResult:
         """Enhanced Chain-Enabled Search with Dynamic Header Generation"""
         start_time = time.time()
@@ -173,6 +174,7 @@ class GeminiGroundingSearch:
                 error=str(e),
                 has_grounding=False
             )
+
 
     @staticmethod
     def _execute_enhanced_analysis_chain(client, query: str) -> Dict[str, str]:
@@ -293,8 +295,9 @@ Provide structural analysis:"""
                 "3. Market Position & Competitive Analysis", 
                 "4. Recent Strategic Developments",
                 "5. Key Metrics & Financial Data",
-                "6. Growth Prospects & Challenges",
-                "7. Investment Analysis & Outlook"
+                "6. Summary table",
+                "7. Growth Prospects & Challenges",
+                "8. Investment Analysis & Outlook"
             ]
         
         # Check for sports
@@ -361,20 +364,297 @@ Provide structural analysis:"""
         }
 
     @staticmethod
-    def _execute_enhanced_content_chain(client, query: str, analysis: Dict[str, str]) -> Dict[str, Any]:
-        """Execute enhanced content generation with simplified grounding"""
+    def _create_anti_duplication_prompt(query: str, analysis: Dict[str, str]) -> str:
+        """Create prompt specifically designed to prevent duplication"""
         
-        # Generate dynamic structured prompt
-        content_prompt = GeminiGroundingSearch._create_dynamic_nepal_style_prompt_simple(query, analysis)
-        system_instruction = GeminiGroundingSearch._create_enhanced_system_instruction_simple(analysis)
+        dynamic_headers = analysis.get('dynamic_headers', [])
+        target_length = analysis.get('target_length', '1000')
+        
+        # Build header structure with explicit anti-duplication instructions
+        headers_structure = ""
+        if dynamic_headers:
+            for i, header in enumerate(dynamic_headers, 1):
+                # Ensure proper numbering
+                if not header.startswith(f'{i}.'):
+                    header = f"{i}. {header.replace('1. ', '').replace('2. ', '').replace('3. ', '').replace('4. ', '').replace('5. ', '').replace('6. ', '').replace('7. ', '').replace('8. ', '')}"
+                
+                headers_structure += f"""
+## {header}
+[Write this section ONCE and move to the next section. Include specific facts, figures, dates. Use clean citations like (source.com)]
+"""
+        
+        # Anti-duplication prompt
+        prompt = f"""CRITICAL: Use Google Search to find current 2024-2025 information for: "{query}"
+
+ANTI-DUPLICATION RULES (MANDATORY):
+- Write each numbered section header EXACTLY ONCE
+- Do NOT repeat any section content anywhere in your response
+- Do NOT duplicate headers like "## 1. Executive Summary" twice
+- Move logically from section 1 to section 7 WITHOUT repeating
+- Use clean inline citations: (reuters.com) or (cnn.com) NOT numbered lists
+- Target length: ~{target_length} words TOTAL (not per section)
+
+<response_structure>
+{headers_structure}
+</response_structure>
+
+<citation_format>
+- Use clean inline citations: (source.com) immediately after facts
+- Do NOT use numbered citation lists like [1, 2, 3, 4, 5]
+- Example: "Revenue reached $27.9 billion in FY2024 (financialexpress.com)"
+</citation_format>
+
+<strict_instructions>
+- Write each section ONCE ONLY
+- No duplicate headers or content
+- Clean, professional formatting
+- Specific data with exact figures and dates
+- Move through sections 1-7 sequentially without repetition
+</strict_instructions>
+
+Generate ONE comprehensive response without ANY duplication."""
+
+        return prompt
+    @staticmethod
+    def _create_clean_citation_system_instruction(analysis: Dict[str, str]) -> str:
+        """Create system instruction for clean citations and no duplication"""
+        
+        content_type = analysis.get('content_type', 'general_comprehensive')
+        
+        base_instruction = """You are an expert research analyst providing comprehensive information.
+
+CRITICAL ANTI-DUPLICATION RULES:
+- Write each section header ONLY ONCE in your entire response
+- Do NOT repeat section content anywhere
+- Do NOT duplicate any headers like "## 1. Executive Summary"
+- Move sequentially through sections without going back
+- Use clean inline citations: (source.com) NOT numbered lists
+
+CITATION FORMAT REQUIREMENTS:
+- Use clean inline citations: (reuters.com), (bloomberg.com), (cnn.com)
+- Do NOT use numbered citation formats like [1], [2], [3, 4, 5]
+- Place citations immediately after facts: "Revenue was $10B (source.com)"
+- Keep citations simple and readable
+
+RESPONSE STRUCTURE:
+- Write sections 1 through 7 sequentially
+- Each section appears ONCE ONLY
+- No repetition of headers or content
+- Professional formatting with specific data"""
+
+        if content_type == 'business_financial':
+            return f"""{base_instruction}
+
+BUSINESS FOCUS:
+- Emphasize financial metrics and performance data
+- Include exact figures, percentages, and dates
+- Use financial sources: (financialexpress.com), (moneycontrol.com)
+- Provide comprehensive analysis without repetition"""
+
+        else:
+            return f"""{base_instruction}
+
+COMPREHENSIVE ANALYSIS:
+- Provide balanced analysis covering all aspects
+- Include current developments and implications
+- Use diverse, authoritative sources with clean citations
+- Structure information logically without duplication"""
+
+
+    @staticmethod
+    def _comprehensive_cleanup(response_text: str, analysis: Dict[str, str]) -> str:
+        """Comprehensive cleanup to remove duplication and fix citations"""
+        
+        if not response_text:
+            return response_text
+        
+        print("Debug: Starting comprehensive cleanup...")
+        
+        # Step 1: Split response into lines
+        lines = response_text.split('\n')
+        cleaned_lines = []
+        seen_headers = set()
+        current_section = None
+        section_content = {}
+        
+        # Step 2: Process each line to identify and deduplicate sections
+        for line in lines:
+            line = line.strip()
+            
+            if not line:
+                cleaned_lines.append('')
+                continue
+            
+            # Check if this is a header line
+            if line.startswith('##') or any(line.startswith(f'{i}.') for i in range(1, 10)):
+                # Extract section number
+                if line.startswith('##'):
+                    header_text = line[2:].strip()
+                else:
+                    header_text = line
+                
+                # Get section number
+                section_num = None
+                for i in range(1, 10):
+                    if f'{i}.' in header_text:
+                        section_num = i
+                        break
+                
+                if section_num:
+                    # Check if we've seen this section before
+                    if section_num in seen_headers:
+                        print(f"Debug: Skipping duplicate section {section_num}")
+                        current_section = None  # Ignore content until next new section
+                        continue
+                    
+                    seen_headers.add(section_num)
+                    current_section = section_num
+                    
+                    # Format header properly
+                    if not line.startswith('##'):
+                        cleaned_lines.append(f"## {header_text}")
+                    else:
+                        cleaned_lines.append(line)
+                    
+                    section_content[section_num] = []
+                else:
+                    cleaned_lines.append(line)
+            else:
+                # Regular content line
+                if current_section is not None:
+                    # Only add if we haven't seen this exact content in this section
+                    if line not in section_content.get(current_section, []):
+                        section_content[current_section].append(line)
+                        cleaned_lines.append(line)
+                else:
+                    # We're in a duplicate section, skip this content
+                    continue
+        
+        # Step 3: Reconstruct the response
+        formatted_response = '\n'.join(cleaned_lines)
+        
+        # Step 4: Clean up citations - convert numbered citations to inline
+        formatted_response = GeminiGroundingSearch._clean_citations(formatted_response)
+        
+        # Step 5: Fix spacing
+        formatted_response = formatted_response.replace('\n## ', '\n\n## ')
+        
+        # Step 6: Remove excessive newlines
+        while '\n\n\n' in formatted_response:
+            formatted_response = formatted_response.replace('\n\n\n', '\n\n')
+        
+        # Step 7: Remove any remaining duplicate paragraphs
+        formatted_response = GeminiGroundingSearch._remove_duplicate_paragraphs(formatted_response)
+        
+        print("Debug: Comprehensive cleanup completed")
+        return formatted_response.strip()
+    @staticmethod
+    def _clean_citations(text: str) -> str:
+        """Convert messy numbered citations to clean inline citations"""
+        
+        # Remove numbered citation patterns like [1, 2, 3, 4, 5] or [2, 12, 16, 19, 28]
+        import re
+        
+        # Pattern to match numbered citations like [1, 2, 3] or [2]
+        citation_pattern = r'\[[\d,\s]+\]'
+        
+        # Remove all numbered citation patterns
+        cleaned_text = re.sub(citation_pattern, '', text)
+        
+        # Clean up any double spaces left behind
+        cleaned_text = re.sub(r'\s+', ' ', cleaned_text)
+        
+        # Clean up spaces before punctuation
+        cleaned_text = re.sub(r'\s+([.,;:])', r'\1', cleaned_text)
+        
+        return cleaned_text
+
+    @staticmethod
+    def _remove_duplicate_paragraphs(text: str) -> str:
+        """Remove duplicate paragraphs while preserving order"""
+        
+        paragraphs = text.split('\n\n')
+        seen_paragraphs = set()
+        unique_paragraphs = []
+        
+        for paragraph in paragraphs:
+            # Normalize paragraph for comparison (remove extra spaces)
+            normalized = ' '.join(paragraph.split())
+            
+            # Skip very short paragraphs or duplicates
+            if len(normalized) > 10 and normalized not in seen_paragraphs:
+                seen_paragraphs.add(normalized)
+                unique_paragraphs.append(paragraph)
+            elif len(normalized) <= 10:
+                # Keep short paragraphs (like headers) without duplication check
+                unique_paragraphs.append(paragraph)
+        
+        return '\n\n'.join(unique_paragraphs)
+
+    @staticmethod
+    def _extract_sources_clean(response) -> List[Dict[str, str]]:
+        """Extract sources with cleaner formatting"""
+        
+        sources = []
+        try:
+            if (response.candidates and 
+                hasattr(response.candidates[0], 'grounding_metadata')):
+                
+                metadata = response.candidates[0].grounding_metadata
+                
+                if hasattr(metadata, 'grounding_chunks'):
+                    seen_domains = set()
+                    for chunk in metadata.grounding_chunks:
+                        if (hasattr(chunk, 'web') and chunk.web and chunk.web.uri):
+                            uri = chunk.web.uri
+                            title = getattr(chunk.web, 'title', 'Unknown')
+                            
+                            # Extract clean domain name
+                            try:
+                                from urllib.parse import urlparse
+                                domain = urlparse(uri).netloc.replace('www.', '')
+                            except:
+                                domain = uri.split('/')[2] if '/' in uri else uri
+                            
+                            # Avoid duplicate domains
+                            if domain not in seen_domains:
+                                # Clean title - remove extra text and truncate
+                                clean_title = title.split(' - ')[0].split(' | ')[0].split('...')[0]
+                                if len(clean_title) > 80:
+                                    clean_title = clean_title[:80] + "..."
+                                
+                                sources.append({
+                                    'title': clean_title,
+                                    'uri': uri
+                                })
+                                seen_domains.add(domain)
+                                
+                            if len(sources) >= 8:  # Limit sources
+                                break
+                        
+        except Exception as e:
+            print(f"Source extraction error: {e}")
+        
+        return sources
+
+
+    
+    @staticmethod
+    
+    def _execute_enhanced_content_chain(client, query: str, analysis: Dict[str, str]) -> Dict[str, Any]:
+        """Execute enhanced content generation with comprehensive deduplication"""
+        
+        # Generate dynamic structured prompt with anti-duplication measures
+        content_prompt = GeminiGroundingSearch._create_anti_duplication_prompt(query, analysis)
+        system_instruction = GeminiGroundingSearch._create_clean_citation_system_instruction(analysis)
         
         # Calculate token limit
         target_length = analysis.get('target_length', '1000')
         try:
-            token_limit = int(target_length.replace('words', '').replace('~', '').strip()) + 500
-            token_limit = min(max(token_limit, 1000), 4000)
+            token_limit = int(target_length.replace('words', '').replace('~', '').strip()) + 300
+            token_limit = min(max(token_limit, 800), 2000)  # Reduced to prevent over-generation
         except:
-            token_limit = 2000
+            token_limit = 1500
         
         # Try grounding first, then fallback
         try:
@@ -390,7 +670,7 @@ Provide structural analysis:"""
                 response_modalities=['TEXT'],
                 max_output_tokens=token_limit,
                 system_instruction=system_instruction,
-                temperature=0.1
+                temperature=0.05  # Very low temperature to reduce repetition
             )
             
             response = client.models.generate_content(
@@ -401,14 +681,14 @@ Provide structural analysis:"""
             
             # Extract response and sources
             response_text = GeminiGroundingSearch._extract_response_text_simple(response)
-            sources = GeminiGroundingSearch._extract_sources_simple(response)
+            sources = GeminiGroundingSearch._extract_sources_clean(response)
             search_queries = GeminiGroundingSearch._extract_search_queries_simple(response)
             has_grounding = len(sources) > 0
             
             print(f"Debug: Grounding successful - {len(sources)} sources found")
             
-            # Simple post-processing without regex
-            processed_response = GeminiGroundingSearch._post_process_simple(response_text, analysis)
+            # Comprehensive deduplication and cleanup
+            processed_response = GeminiGroundingSearch._comprehensive_cleanup(response_text, analysis)
             
             return {
                 'response_text': processed_response,
@@ -427,8 +707,8 @@ Provide structural analysis:"""
                 fallback_config = types.GenerateContentConfig(
                     response_modalities=['TEXT'],
                     max_output_tokens=token_limit,
-                    system_instruction=system_instruction + "\n\nNote: Provide comprehensive response based on training data.",
-                    temperature=0.2
+                    system_instruction=system_instruction + "\n\nProvide comprehensive response based on training data. Do NOT repeat sections.",
+                    temperature=0.1
                 )
                 
                 fallback_response = client.models.generate_content(
@@ -438,7 +718,7 @@ Provide structural analysis:"""
                 )
                 
                 fallback_text = GeminiGroundingSearch._extract_response_text_simple(fallback_response)
-                processed_fallback = GeminiGroundingSearch._post_process_simple(fallback_text, analysis)
+                processed_fallback = GeminiGroundingSearch._comprehensive_cleanup(fallback_text, analysis)
                 
                 return {
                     'response_text': processed_fallback + "\n\n*Note: Response generated without live search grounding.*",
@@ -457,6 +737,7 @@ Provide structural analysis:"""
                     'has_grounding': False,
                     'analysis_used': analysis
                 }
+
 
     @staticmethod
     def _create_dynamic_nepal_style_prompt_simple(query: str, analysis: Dict[str, str]) -> str:
