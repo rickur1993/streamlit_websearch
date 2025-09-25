@@ -463,91 +463,131 @@ COMPREHENSIVE ANALYSIS:
 
     @staticmethod
     def _comprehensive_cleanup(response_text: str, analysis: Dict[str, str]) -> str:
-        """Comprehensive cleanup to remove duplication and fix citations"""
+        """Fixed cleanup that prevents text corruption"""
         
         if not response_text:
             return response_text
         
         print("Debug: Starting comprehensive cleanup...")
         
-        # Step 1: Split response into lines
-        lines = response_text.split('\n')
-        cleaned_lines = []
-        seen_headers = set()
-        current_section = None
-        section_content = {}
+        # Step 1: Fix corrupted text patterns first
+        response_text = GeminiGroundingSearch._fix_corrupted_text(response_text)
         
-        # Step 2: Process each line to identify and deduplicate sections
-        for line in lines:
-            line = line.strip()
-            
-            if not line:
-                cleaned_lines.append('')
+        # Step 2: Clean citations properly
+        response_text = GeminiGroundingSearch._fix_citations_properly(response_text)
+        
+        # Step 3: Remove duplicate sections without corrupting text
+        response_text = GeminiGroundingSearch._remove_duplicates_safely(response_text)
+        
+        # Step 4: Fix spacing and formatting
+        response_text = response_text.replace('\n## ', '\n\n## ')
+        while '\n\n\n' in response_text:
+            response_text = response_text.replace('\n\n\n', '\n\n')
+        
+        return response_text.strip()
+    @staticmethod
+    def _fix_corrupted_text(text: str) -> str:
+        """Fix corrupted number formatting and text issues"""
+        import re
+        
+        # Fix corrupted currency patterns like "30.5billioninFiscalYear2025"
+        text = re.sub(r'(\d+\.?\d*)(billion|million)(in|In)([A-Z])', r'\1 \2 \3 \4', text)
+        text = re.sub(r'(\d+\.?\d*)(billion|million)(FY|Fiscal)', r'\1 \2 in \3', text)
+        
+        # Fix corrupted percentage patterns like "9.330.5billion"
+        text = re.sub(r'(\d+\.\d+)(\d+\.\d+)(billion|million)', r'\1% increase to $\2 \3', text)
+        
+        # Fix currency formatting
+        text = re.sub(r'\$(\d+)\.(\d+)billion', r'$\1.\2 billion', text)
+        text = re.sub(r'\$(\d+)million', r'$\1 million', text)
+        
+        # Fix table separators that got corrupted
+        text = re.sub(r'∣', '|', text)
+        text = re.sub(r'∣', '|', text)
+        
+        return text
+    @staticmethod
+    def _fix_citations_properly(text: str) -> str:
+        """Replace generic citations with clean format"""
+        
+        # Remove generic (source.com) citations
+        text = text.replace('(source.com)', '')
+        
+        # Clean up numbered citations more carefully
+        import re
+        text = re.sub(r'\s*\[\d+(?:,\s*\d+)*\]\s*', ' ', text)
+        
+        # Clean up double spaces
+        text = re.sub(r'\s+', ' ', text)
+        
+        return text
+
+    @staticmethod
+    def _remove_duplicates_safely(text: str) -> str:
+        """Remove duplicates without corrupting text"""
+        
+        sections = text.split('## ')
+        unique_sections = []
+        seen_headers = set()
+        
+        for i, section in enumerate(sections):
+            if i == 0:  # First section before any headers
+                unique_sections.append(section)
                 continue
             
-            # Check if this is a header line
-            if line.startswith('##') or any(line.startswith(f'{i}.') for i in range(1, 10)):
-                # Extract section number
-                if line.startswith('##'):
-                    header_text = line[2:].strip()
-                else:
-                    header_text = line
-                
-                # Get section number
+            # Extract section number from header
+            lines = section.split('\n')
+            if lines:
+                header = lines[0].strip()
                 section_num = None
-                for i in range(1, 10):
-                    if f'{i}.' in header_text:
-                        section_num = i
+                
+                # Simple section number extraction
+                for num in range(1, 10):
+                    if f'{num}.' in header:
+                        section_num = num
                         break
                 
-                if section_num:
-                    # Check if we've seen this section before
-                    if section_num in seen_headers:
-                        print(f"Debug: Skipping duplicate section {section_num}")
-                        current_section = None  # Ignore content until next new section
-                        continue
-                    
+                if section_num and section_num not in seen_headers:
                     seen_headers.add(section_num)
-                    current_section = section_num
-                    
-                    # Format header properly
-                    if not line.startswith('##'):
-                        cleaned_lines.append(f"## {header_text}")
-                    else:
-                        cleaned_lines.append(line)
-                    
-                    section_content[section_num] = []
-                else:
-                    cleaned_lines.append(line)
-            else:
-                # Regular content line
-                if current_section is not None:
-                    # Only add if we haven't seen this exact content in this section
-                    if line not in section_content.get(current_section, []):
-                        section_content[current_section].append(line)
-                        cleaned_lines.append(line)
-                else:
-                    # We're in a duplicate section, skip this content
-                    continue
+                    unique_sections.append(section)
         
-        # Step 3: Reconstruct the response
-        formatted_response = '\n'.join(cleaned_lines)
+        return '## '.join(unique_sections)
+
+    @staticmethod
+    def _create_anti_duplication_prompt(query: str, analysis: Dict[str, str]) -> str:
+        """Simplified prompt that prevents corruption"""
         
-        # Step 4: Clean up citations - convert numbered citations to inline
-        formatted_response = GeminiGroundingSearch._clean_citations(formatted_response)
+        dynamic_headers = analysis.get('dynamic_headers', [])
+        target_length = analysis.get('target_length', '1000')
         
-        # Step 5: Fix spacing
-        formatted_response = formatted_response.replace('\n## ', '\n\n## ')
+        # Clean header structure
+        headers_structure = ""
+        if dynamic_headers:
+            for header in dynamic_headers:
+                headers_structure += f"\n{header}\n[Provide specific information with exact figures and dates]\n"
         
-        # Step 6: Remove excessive newlines
-        while '\n\n\n' in formatted_response:
-            formatted_response = formatted_response.replace('\n\n\n', '\n\n')
+        prompt = f"""Use Google Search to find current 2024-2025 information for: "{query}"
+
+    REQUIREMENTS:
+    - Write each section ONLY ONCE
+    - Use exact figures with proper spacing (e.g., "$30.5 billion" not "30.5billionin")
+    - Target length: {target_length} words
+    - Professional business analysis format
+
+    STRUCTURE:
+    {headers_structure}
+
+    FORMATTING:
+    - Use proper number formatting: "$30.5 billion", "9.3% growth"
+    - Clean section headers with ## 
+    - No duplicate content
+    - Specific data with sources
+
+    Generate comprehensive analysis without duplication."""
         
-        # Step 7: Remove any remaining duplicate paragraphs
-        formatted_response = GeminiGroundingSearch._remove_duplicate_paragraphs(formatted_response)
-        
-        print("Debug: Comprehensive cleanup completed")
-        return formatted_response.strip()
+        return prompt
+
+
     @staticmethod
     def _clean_citations(text: str) -> str:
         """Convert messy numbered citations to clean inline citations"""
