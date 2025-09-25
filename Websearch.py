@@ -339,7 +339,7 @@ Provide structural analysis:"""
         Use the LLM to generate context-aware, dynamic section headers based on the query.
         """
         prompt = f"""
-        Given the query below, generate a numbered list of suitable section headers for a
+        Given the query below, generate  numbered list of suitable section headers for a
         comprehensive structured report summarizing key topics and aspects relevant to the query.
         Only output the list of headers in order, each preceded by its number.
 
