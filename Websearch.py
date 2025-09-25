@@ -203,8 +203,8 @@ class GeminiGroundingSearch:
 
         2. Response Requirements:
         - brief: 200-400 words, focused updates
-        - detailed: 400-800 words, comprehensive coverage
-        - comprehensive: 800-1500 words, full business intelligence
+        - detailed: 600-1000 words, comprehensive coverage
+        - comprehensive: 1200-1800 words, full business intelligence
 
         3. Structure Format:
         - executive_summary: Business format with sections
@@ -593,9 +593,9 @@ class GeminiGroundingSearch:
         query_type = analysis.get('query_type', 'general_info')
         
         if response_depth == 'comprehensive' or query_type == 'business_financial':
-            return 1500
+            return 2000
         elif response_depth == 'brief' or query_type == 'sports_news':
-            return 800
+            return 1000
         else:
             return 1000
 
@@ -630,7 +630,7 @@ class GeminiGroundingSearch:
                     
                     for chunk in metadata.grounding_chunks:
                         if (hasattr(chunk, 'web') and chunk.web and chunk.web.uri and 
-                            unique_sources_count < 10):
+                            unique_sources_count < 19):
                             
                             uri = chunk.web.uri
                             title = getattr(chunk.web, 'title', 'Unknown')
@@ -651,7 +651,7 @@ class GeminiGroundingSearch:
                     other_sources = [s for s in source_to_chunks.values() if not s['is_quality']]
                     
                     # Prioritize quality sources
-                    all_sources = quality_sources + other_sources[:10-len(quality_sources)]
+                    all_sources = quality_sources + other_sources[:19-len(quality_sources)]
                     
                     for source_data in all_sources:
                         sources.append({
