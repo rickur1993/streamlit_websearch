@@ -258,7 +258,7 @@ Provide structural analysis:"""
                     analysis['target_length'] = parts[1].strip()
         
         # Generate appropriate headers
-        analysis['dynamic_headers'] = GeminiGroundingSearch._generate_context_aware_headers_simple(query, analysis['content_type'])
+        analysis['dynamic_headers'] = GeminiGroundingSearch._generate_dynamic_headers_via_llm(query, analysis['content_type'])
         
         return analysis
     
@@ -404,7 +404,7 @@ Provide structural analysis:"""
             'content_type': content_type,
             'complexity_level': 'complex',
             'target_length': target_length,
-            'dynamic_headers': GeminiGroundingSearch._generate_context_aware_headers_simple(query, content_type)
+            'dynamic_headers': GeminiGroundingSearch._generate_dynamic_headers_via_llm(query, content_type)
         }
 
     @staticmethod
