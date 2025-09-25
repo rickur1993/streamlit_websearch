@@ -387,7 +387,7 @@ class GeminiGroundingSearch:
         Key findings with specific metrics and recent developments (2-3 sentences).
 
         ## Detailed Analysis
-        ### Primary Analysis
+        
         - Current performance data with exact figures and percentages
         - Recent developments (last 6-12 months) with specific dates
         - Key growth drivers and strategic initiatives
@@ -487,7 +487,6 @@ class GeminiGroundingSearch:
     Key findings with specific metrics and recent developments (2-3 sentences).
 
     ## Detailed Analysis
-    ### Primary Analysis
     - Current performance data with exact figures and percentages
     - Recent developments (last 6-12 months) with specific dates
     - Key growth drivers and strategic initiatives
