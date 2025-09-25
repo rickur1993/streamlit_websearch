@@ -622,7 +622,7 @@ COMPREHENSIVE ANALYSIS:
 
         # Conservative token limit
         system_instruction = GeminiGroundingSearch._create_system_instruction(analysis)
-        token_limit = 3000
+        token_limit = 30000
         
         try:
             print("Debug: Starting grounding attempt...")
