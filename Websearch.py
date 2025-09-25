@@ -559,7 +559,7 @@ COMPREHENSIVE ANALYSIS:
     - Write each section header ONLY ONCE
     - Do NOT duplicate any content or sections
     - Use clean inline citations: (reuters.com) or [cnn.com]
-    - Do NOT use numbered citation lists like [1,2,3]
+    - Do NOT use numbered citation lists like [1,2,3,4]
     - Structure responses logically with clear numbered sections
     - Provide authoritative, well-researched analysis
     - Cite information sources naturally within your response
