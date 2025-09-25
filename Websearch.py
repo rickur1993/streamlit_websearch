@@ -399,7 +399,7 @@ class GeminiGroundingSearch:
         - Stock performance data with percentage changes
         - Market capitalization and valuation metrics
         - Regulatory compliance and approval data
-        -Summary Table if applicable
+        -Summary Table in case of comparisons and business analysis
 
         ## Recent Developments (2024-2025)
         - Latest regulatory changes with specific dates
@@ -497,7 +497,7 @@ class GeminiGroundingSearch:
     - Stock performance data with percentage changes
     - Market capitalization and valuation metrics
     - Regulatory compliance and approval data
-    -Summary Table if applicable
+    -Summary Table in case of comparisons and business analysis
 
     ## Recent Developments (2024-2025)
     - Latest regulatory changes with specific dates
