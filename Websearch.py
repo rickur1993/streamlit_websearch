@@ -7,6 +7,7 @@ import os
 import json
 from dotenv import load_dotenv
 import os
+import re
 import requests
 import subprocess
 
@@ -83,6 +84,8 @@ class SearchResult:
 # Standard system prompt for consistency
 STANDARD_SYSTEM_PROMPT = """You are a helpful assistant with access to current web information. Always provide accurate, up-to-date information with proper citations when available."""
 
+
+
 class GeminiGroundingSearch:
     """Optimized Gemini search with enhanced chain prompting and dynamic header generation"""
     
@@ -128,20 +131,6 @@ class GeminiGroundingSearch:
         
         title_lower = title.lower()
         return any(indicator in title_lower for indicator in quality_indicators)
-
-    @staticmethod  
-    def _post_process_response(response_text: str) -> str:
-        """Enhance response structure if agent didn't follow instructions properly"""
-        if not response_text or "## Executive Summary" in response_text:
-            return response_text
-            
-        lines = response_text.split('\n')
-        if len(lines) > 2 and not response_text.startswith('##'):
-            structured_response = f"## Executive Summary\n\n{lines[0]}\n\n## Detailed Analysis\n\n"
-            structured_response += '\n'.join(lines[1:])
-            return structured_response
-            
-        return response_text
 
     @staticmethod
     def search_with_new_sdk(query: str) -> SearchResult:
@@ -205,34 +194,23 @@ class GeminiGroundingSearch:
    - Comprehensive: 8-12 sections, extensive coverage with tables/summaries (1500-2500 words)
 
 3. OPTIMAL HEADER STRUCTURE DETERMINATION:
-   Based on content type, determine specific numbered headers that would organize information most effectively:
-   
-   For current_events: Background & Causes → Timeline → Key Developments → Multiple Perspectives → Current Status → Outlook
-   For business_financial: Executive Summary → Financial Performance → Market Analysis → Recent Developments → Strategic Outlook
-   For sports_news: Current Status → Match Details → Performance Analysis → Recent Form → Looking Ahead
-   For technical_guide: Overview → Implementation → Configuration → Best Practices → Troubleshooting
-   For general_comprehensive: Overview → Key Information → Current Developments → Analysis → Implications
+   Based on content type, determine specific numbered headers that would organize information most effectively.
 </analysis_framework>
 
 <output_format>
 Content_Type: [current_events|business_financial|sports_news|technical_guide|general_comprehensive]
 Complexity_Level: [simple|complex|comprehensive]
-Header_Count: [number between 3-12]
-Dynamic_Headers: [List specific numbered headers like "1. Background & Root Causes", "2. Timeline of Events", etc.]
-Special_Elements: [summary_table|timeline|comparison_analysis|multiple_perspectives|data_metrics]
 Target_Length: [word count estimate]
-Key_Focus_Areas: [list 3-4 main aspects to emphasize]
+Dynamic_Headers: Background, Timeline, Developments, Perspectives, Status, Outlook
 </output_format>
 
-Provide detailed structural blueprint:"""
+Provide structural analysis:"""
 
         try:
             config = types.GenerateContentConfig(
                 response_modalities=['TEXT'],
-                max_output_tokens=500,
-                system_instruction="""You are an expert content strategist specializing in dynamic content organization. 
-                Analyze queries to determine optimal response structure, specific header sequences, and information hierarchy. 
-                Focus on creating numbered section headers that logically organize complex information like professional research reports."""
+                max_output_tokens=300,
+                system_instruction="Analyze queries to determine optimal response structure and organization."
             )
             
             response = client.models.generate_content(
@@ -242,77 +220,60 @@ Provide detailed structural blueprint:"""
             )
             
             analysis_text = response.text if response.text else "Analysis failed"
-            return GeminiGroundingSearch._parse_enhanced_analysis(analysis_text, query)
+            return GeminiGroundingSearch._parse_enhanced_analysis_simple(analysis_text, query)
             
         except Exception as e:
             print(f"Enhanced analysis error: {e}")
             return GeminiGroundingSearch._create_enhanced_fallback_analysis(query)
 
     @staticmethod
-    def _parse_enhanced_analysis(analysis_text: str, query: str) -> Dict[str, str]:
-        """Parse enhanced analysis response with dynamic header extraction"""
+    def _parse_enhanced_analysis_simple(analysis_text: str, query: str) -> Dict[str, str]:
+        """Simplified parsing that doesn't use regex"""
         
         analysis = {
             'content_type': 'general_comprehensive',
             'complexity_level': 'complex',
-            'header_count': '6',
-            'dynamic_headers': [],
-            'special_elements': [],
             'target_length': '1000',
-            'key_focus_areas': []
+            'dynamic_headers': []
         }
         
+        # Simple string-based parsing without regex
         lines = analysis_text.split('\n')
         for line in lines:
             line_lower = line.lower().strip()
             
             if 'content_type:' in line_lower:
-                analysis['content_type'] = line.split(':', 1)[1].strip()
+                parts = line.split(':', 1)
+                if len(parts) > 1:
+                    analysis['content_type'] = parts[1].strip()
             elif 'complexity_level:' in line_lower:
-                analysis['complexity_level'] = line.split(':', 1)[1].strip()
-            elif 'header_count:' in line_lower:
-                analysis['header_count'] = line.split(':', 1)[1].strip()
-            elif 'dynamic_headers:' in line_lower:
-                headers_section = line.split(':', 1)[1].strip()
-                # Extract headers from bracketed list or line by line
-                if '[' in headers_section and ']' in headers_section:
-                    headers_text = headers_section.strip('[]')
-                    analysis['dynamic_headers'] = [h.strip().strip('"') for h in headers_text.split(',')]
-                else:
-                    # Look for headers in subsequent lines
-                    header_lines = []
-                    line_idx = lines.index(line)
-                    for subsequent_line in lines[line_idx+1:line_idx+15]:  # Look ahead for headers
-                        if re.match(r'^\d+\.', subsequent_line.strip()):
-                            header_lines.append(subsequent_line.strip())
-                    analysis['dynamic_headers'] = header_lines
-            elif 'special_elements:' in line_lower:
-                elements_text = line.split(':', 1)[1].strip()
-                if '[' in elements_text and ']' in elements_text:
-                    elements_text = elements_text.strip('[]')
-                    analysis['special_elements'] = [e.strip() for e in elements_text.split(',')]
+                parts = line.split(':', 1)
+                if len(parts) > 1:
+                    analysis['complexity_level'] = parts[1].strip()
             elif 'target_length:' in line_lower:
-                analysis['target_length'] = line.split(':', 1)[1].strip()
-            elif 'key_focus_areas:' in line_lower:
-                focus_text = line.split(':', 1)[1].strip()
-                if '[' in focus_text and ']' in focus_text:
-                    focus_text = focus_text.strip('[]')
-                    analysis['key_focus_areas'] = [f.strip() for f in focus_text.split(',')]
+                parts = line.split(':', 1)
+                if len(parts) > 1:
+                    analysis['target_length'] = parts[1].strip()
         
-        # Generate fallback headers if parsing failed
-        if not analysis['dynamic_headers']:
-            analysis['dynamic_headers'] = GeminiGroundingSearch._generate_context_aware_headers(query, analysis['content_type'])
+        # Generate appropriate headers
+        analysis['dynamic_headers'] = GeminiGroundingSearch._generate_context_aware_headers_simple(query, analysis['content_type'])
         
         return analysis
 
     @staticmethod
-    def _generate_context_aware_headers(query: str, content_type: str) -> List[str]:
-        """Generate context-aware headers based on query content and type"""
+    def _generate_context_aware_headers_simple(query: str, content_type: str) -> List[str]:
+        """Generate context-aware headers without regex"""
         
         query_lower = query.lower()
         
-        # Current events pattern (like Nepal Gen Z example)
-        if content_type == 'current_events' or any(word in query_lower for word in ['unrest', 'protest', 'crisis', 'violence', 'election', 'conflict']):
+        # Simple keyword checking without regex
+        current_event_keywords = ['unrest', 'protest', 'crisis', 'violence', 'election', 'conflict', 'news']
+        business_keywords = ['company', 'stock', 'earnings', 'financial', 'market', 'revenue', 'business']
+        sports_keywords = ['cricket', 'match', 'score', 'tournament', 'game', 'team', 'sports']
+        tech_keywords = ['api', 'code', 'implementation', 'setup', 'configuration', 'technical']
+        
+        # Check for current events
+        if content_type == 'current_events' or any(word in query_lower for word in current_event_keywords):
             return [
                 "1. Background & Root Causes",
                 "2. Timeline of Key Events", 
@@ -324,8 +285,8 @@ Provide detailed structural blueprint:"""
                 "8. Summary & Outlook"
             ]
         
-        # Business/Financial analysis
-        elif content_type == 'business_financial' or any(word in query_lower for word in ['company', 'stock', 'earnings', 'financial', 'market', 'revenue']):
+        # Check for business/financial
+        elif content_type == 'business_financial' or any(word in query_lower for word in business_keywords):
             return [
                 "1. Executive Summary",
                 "2. Current Financial Performance",
@@ -336,8 +297,8 @@ Provide detailed structural blueprint:"""
                 "7. Investment Analysis & Outlook"
             ]
         
-        # Sports/News updates
-        elif content_type == 'sports_news' or any(word in query_lower for word in ['cricket', 'match', 'score', 'tournament', 'game', 'team']):
+        # Check for sports
+        elif content_type == 'sports_news' or any(word in query_lower for word in sports_keywords):
             return [
                 "1. Current Match Status",
                 "2. Key Performance Statistics",
@@ -347,19 +308,18 @@ Provide detailed structural blueprint:"""
                 "6. Upcoming Fixtures & Predictions"
             ]
         
-        # Technical guides
-        elif content_type == 'technical_guide' or any(word in query_lower for word in ['api', 'code', 'implementation', 'setup', 'configuration']):
+        # Check for technical
+        elif content_type == 'technical_guide' or any(word in query_lower for word in tech_keywords):
             return [
                 "1. Technical Overview",
                 "2. Prerequisites & Requirements",
                 "3. Step-by-Step Implementation",
                 "4. Configuration & Setup",
                 "5. Best Practices & Optimization",
-                "6. Common Issues & Troubleshooting",
-                "7. Advanced Features & Extensions"
+                "6. Common Issues & Troubleshooting"
             ]
         
-        # General comprehensive information
+        # Default general structure
         else:
             return [
                 "1. Overview & Background",
@@ -376,53 +336,51 @@ Provide detailed structural blueprint:"""
         
         query_lower = query.lower()
         
-        # Detect content type through keywords
+        # Simple keyword detection
         if any(word in query_lower for word in ['unrest', 'protest', 'crisis', 'election', 'violence', 'political']):
             content_type = 'current_events'
-            complexity = 'comprehensive'
             target_length = '2000'
         elif any(word in query_lower for word in ['stock', 'company', 'earnings', 'financial', 'business', 'revenue']):
             content_type = 'business_financial'
-            complexity = 'complex'
             target_length = '1200'
         elif any(word in query_lower for word in ['cricket', 'match', 'score', 'sports', 'game']):
             content_type = 'sports_news'
-            complexity = 'simple'
             target_length = '600'
         elif any(word in query_lower for word in ['api', 'code', 'technical', 'implementation']):
             content_type = 'technical_guide'
-            complexity = 'complex'
             target_length = '1000'
         else:
             content_type = 'general_comprehensive'
-            complexity = 'complex'
             target_length = '1000'
         
         return {
             'content_type': content_type,
-            'complexity_level': complexity,
-            'header_count': '6',
-            'dynamic_headers': GeminiGroundingSearch._generate_context_aware_headers(query, content_type),
-            'special_elements': ['summary_table'] if content_type in ['current_events', 'business_financial'] else [],
+            'complexity_level': 'complex',
             'target_length': target_length,
-            'key_focus_areas': ['current information', 'detailed analysis', 'multiple perspectives']
+            'dynamic_headers': GeminiGroundingSearch._generate_context_aware_headers_simple(query, content_type)
         }
 
     @staticmethod
     def _execute_enhanced_content_chain(client, query: str, analysis: Dict[str, str]) -> Dict[str, Any]:
-        """Execute enhanced content generation with fixed grounding and dynamic structure"""
+        """Execute enhanced content generation with simplified grounding"""
         
         # Generate dynamic structured prompt
-        content_prompt = GeminiGroundingSearch._create_dynamic_nepal_style_prompt(query, analysis)
-        system_instruction = GeminiGroundingSearch._create_enhanced_system_instruction(analysis)
+        content_prompt = GeminiGroundingSearch._create_dynamic_nepal_style_prompt_simple(query, analysis)
+        system_instruction = GeminiGroundingSearch._create_enhanced_system_instruction_simple(analysis)
         
-        # Calculate adaptive token limit
+        # Calculate token limit
         target_length = analysis.get('target_length', '1000')
-        token_limit = GeminiGroundingSearch._get_adaptive_token_limit(analysis)
-        
-        # Setup grounding tool with correct configuration for Gemini 2.5
         try:
-            # Use the correct grounding tool configuration
+            token_limit = int(target_length.replace('words', '').replace('~', '').strip()) + 500
+            token_limit = min(max(token_limit, 1000), 4000)
+        except:
+            token_limit = 2000
+        
+        # Try grounding first, then fallback
+        try:
+            print("Debug: Attempting grounding...")
+            
+            # Setup grounding tool
             grounding_tool = types.Tool(
                 google_search=types.GoogleSearch()
             )
@@ -432,69 +390,45 @@ Provide detailed structural blueprint:"""
                 response_modalities=['TEXT'],
                 max_output_tokens=token_limit,
                 system_instruction=system_instruction,
-                temperature=0.05  # Very low temperature for consistent structured output
+                temperature=0.1
             )
             
-            print(f"Debug: Using token limit: {token_limit}")
-            print(f"Debug: Target length: {target_length}")
-            print(f"Debug: Content type: {analysis.get('content_type', 'unknown')}")
-            
-            # Execute content generation
             response = client.models.generate_content(
                 model="gemini-2.5-flash-lite",
                 contents=content_prompt,
                 config=config
             )
             
-            # Debug grounding status
-            has_grounding_metadata = False
-            if response.candidates and hasattr(response.candidates[0], 'grounding_metadata'):
-                has_grounding_metadata = True
-                print("Debug: Grounding metadata found")
-            else:
-                print("Debug: No grounding metadata - checking response structure")
-            
-            # Extract and process response
-            response_text = GeminiGroundingSearch._extract_response_text(response)
-            sources = GeminiGroundingSearch._extract_sources_with_quality_filter(response)
-            search_queries = GeminiGroundingSearch._extract_search_queries(response)
+            # Extract response and sources
+            response_text = GeminiGroundingSearch._extract_response_text_simple(response)
+            sources = GeminiGroundingSearch._extract_sources_simple(response)
+            search_queries = GeminiGroundingSearch._extract_search_queries_simple(response)
             has_grounding = len(sources) > 0
             
-            print(f"Debug: Extracted {len(sources)} sources, {len(search_queries)} search queries")
+            print(f"Debug: Grounding successful - {len(sources)} sources found")
             
-            # Post-process for Nepal-style structure
-            processed_response = GeminiGroundingSearch._post_process_nepal_style_response(
-                response_text, analysis
-            )
+            # Simple post-processing without regex
+            processed_response = GeminiGroundingSearch._post_process_simple(response_text, analysis)
             
             return {
                 'response_text': processed_response,
                 'sources': sources,
                 'search_queries': search_queries,
                 'has_grounding': has_grounding,
-                'analysis_used': analysis,
-                'structure_type': 'dynamic_nepal_style',
-                'debug_info': {
-                    'token_limit': token_limit,
-                    'has_metadata': has_grounding_metadata,
-                    'response_length': len(response_text),
-                    'sources_count': len(sources)
-                }
+                'analysis_used': analysis
             }
             
         except Exception as e:
-            print(f"Enhanced content chain error: {e}")
-            print(f"Error type: {type(e)}")
+            print(f"Grounding failed: {e}")
+            print("Debug: Attempting fallback without grounding...")
             
-            # Fallback without grounding if grounding fails
             try:
-                print("Debug: Attempting fallback without grounding...")
-                
+                # Fallback without grounding
                 fallback_config = types.GenerateContentConfig(
                     response_modalities=['TEXT'],
                     max_output_tokens=token_limit,
-                    system_instruction=system_instruction + "\n\nNote: Operating without Google Search grounding. Provide the best possible response based on training data.",
-                    temperature=0.1
+                    system_instruction=system_instruction + "\n\nNote: Provide comprehensive response based on training data.",
+                    temperature=0.2
                 )
                 
                 fallback_response = client.models.generate_content(
@@ -503,254 +437,114 @@ Provide detailed structural blueprint:"""
                     config=fallback_config
                 )
                 
-                fallback_text = GeminiGroundingSearch._extract_response_text(fallback_response)
-                processed_fallback = GeminiGroundingSearch._post_process_nepal_style_response(
-                    fallback_text, analysis
-                )
+                fallback_text = GeminiGroundingSearch._extract_response_text_simple(fallback_response)
+                processed_fallback = GeminiGroundingSearch._post_process_simple(fallback_text, analysis)
                 
                 return {
-                    'response_text': processed_fallback + "\n\n*Note: This response was generated without live search grounding due to technical limitations.*",
+                    'response_text': processed_fallback + "\n\n*Note: Response generated without live search grounding.*",
                     'sources': [],
                     'search_queries': [],
                     'has_grounding': False,
-                    'analysis_used': analysis,
-                    'structure_type': 'fallback_nepal_style',
-                    'debug_info': {
-                        'fallback_used': True,
-                        'original_error': str(e)
-                    }
+                    'analysis_used': analysis
                 }
                 
             except Exception as fallback_error:
-                print(f"Fallback also failed: {fallback_error}")
+                print(f"Fallback error: {fallback_error}")
                 return {
-                    'response_text': f"Error generating enhanced content: {str(e)}\nFallback error: {str(fallback_error)}",
+                    'response_text': f"Error generating content. Primary: {str(e)} Fallback: {str(fallback_error)}",
                     'sources': [],
                     'search_queries': [],
                     'has_grounding': False,
-                    'analysis_used': analysis,
-                    'debug_info': {
-                        'primary_error': str(e),
-                        'fallback_error': str(fallback_error)
-                    }
+                    'analysis_used': analysis
                 }
 
     @staticmethod
-    def _create_dynamic_nepal_style_prompt(query: str, analysis: Dict[str, str]) -> str:
-        """Create Nepal Gen Z style structured prompt with enhanced grounding instructions"""
+    def _create_dynamic_nepal_style_prompt_simple(query: str, analysis: Dict[str, str]) -> str:
+        """Create structured prompt without regex dependencies"""
         
-        content_type = analysis.get('content_type', 'general_comprehensive')
         dynamic_headers = analysis.get('dynamic_headers', [])
-        special_elements = analysis.get('special_elements', [])
         target_length = analysis.get('target_length', '1000')
-        key_focus_areas = analysis.get('key_focus_areas', [])
         
-        # Build dynamic header structure with more explicit grounding instructions
+        # Build header structure
         headers_structure = ""
         if dynamic_headers:
-            for i, header in enumerate(dynamic_headers, 1):
-                if not header.startswith(f"{i}."):
-                    header = f"{i}. {header}"
-                
+            for header in dynamic_headers:
                 headers_structure += f"""
 ## {header}
-[Use Google Search to find current information. Include specific facts, figures, dates, and sources. Provide detailed analysis with quantitative data where available.]
+[Provide detailed information with specific facts, figures, dates, and sources]
 """
         
-        # Build special elements section
-        special_elements_section = ""
-        if 'summary_table' in special_elements:
-            special_elements_section += """
+        prompt = f"""IMPORTANT: Use Google Search to find current 2024-2025 information for: "{query}"
 
-## Summary Table
-Create a comprehensive summary table organizing key information, data points, and current status in a clear tabular format.
-"""
-        
-        if 'multiple_perspectives' in special_elements:
-            special_elements_section += """
-
-Include multiple stakeholder perspectives, expert opinions, and different viewpoints throughout the analysis.
-"""
-            
-        if 'timeline' in special_elements:
-            special_elements_section += """
-
-Include chronological timeline of key events with specific dates where relevant.
-"""
-        
-        focus_areas_text = ', '.join(key_focus_areas) if key_focus_areas else 'comprehensive current information with detailed analysis'
-
-        # Enhanced prompt with explicit grounding requirements
-        enhanced_prompt = f"""IMPORTANT: You MUST use Google Search grounding extensively for this request.
-
-Provide comprehensive, well-structured analysis for: "{query}"
-
-<mandatory_search_requirements>
-- Perform multiple Google searches to gather comprehensive current information
-- Search for 2024-2025 specific data and recent developments
-- Cross-verify facts from multiple sources
+<requirements>
+- Search for current data and recent developments
 - Include specific details: dates, figures, percentages, names, locations
-- Use authoritative sources and cite them properly
-</mandatory_search_requirements>
-
-<content_strategy>
-Content Type: {content_type}
-Target Length: ~{target_length} words
-Key Focus: {focus_areas_text}
-Structure: Professional research report with numbered sections
-</content_strategy>
+- Use authoritative sources and cite properly
+- Target length: ~{target_length} words
+- Structure as professional research report
+</requirements>
 
 <response_structure>
-Organize your response using these exact numbered sections:
 {headers_structure}
-{special_elements_section}
 </response_structure>
 
-<formatting_requirements>
+<formatting>
 - Use ## for numbered headers (e.g., "## 1. Background & Root Causes")
-- Include bullet points for detailed information within sections
+- Include bullet points for detailed information
 - Add specific data points with exact figures and dates
-- Integrate source information naturally within the content
 - Maintain professional, authoritative tone
-</formatting_requirements>
+</formatting>
 
-Generate comprehensive, current, expertly-structured content with extensive Google Search grounding."""
+Generate comprehensive, current, well-structured content."""
 
-        return enhanced_prompt
+        return prompt
 
     @staticmethod
-    def _create_enhanced_system_instruction(analysis: Dict[str, str]) -> str:
-        """Create enhanced system instruction for professional structured output"""
+    def _create_enhanced_system_instruction_simple(analysis: Dict[str, str]) -> str:
+        """Create system instruction without complex formatting"""
         
         content_type = analysis.get('content_type', 'general_comprehensive')
-        complexity_level = analysis.get('complexity_level', 'complex')
         
-        base_instruction = """You are an expert research analyst and professional content strategist specializing in comprehensive information synthesis.
+        base_instruction = """You are an expert research analyst providing comprehensive information.
 
-CORE MANDATE:
-- Use Google Search grounding extensively for ALL factual claims and current information
-- Prioritize 2024-2025 developments and most recent data available
-- Include specific quantitative details: dates, figures, percentages, names, locations, statistics
-- Cross-verify information from multiple authoritative and credible sources
-- Structure responses with clear numbered sections using exact headers provided
-- Maintain professional research report quality and presentation
-- Provide balanced analysis covering different perspectives where relevant
-
-RESPONSE ARCHITECTURE:
-- Use numbered section headers (## 1. Title, ## 2. Title, etc.) exactly as specified
-- Include detailed bullet points and subsections for complex information
-- Integrate source citations and links naturally within content flow
-- Add summary tables or structured elements when dealing with comparative or complex data
-- Ensure each section provides substantial, well-researched content
-- Connect sections logically to create comprehensive narrative flow"""
+CORE REQUIREMENTS:
+- Use Google Search grounding for ALL factual claims
+- Include specific data: dates, figures, percentages, names, locations
+- Cross-verify information from multiple sources
+- Structure responses with clear numbered sections
+- Maintain professional research quality"""
 
         if content_type == 'current_events':
             return f"""{base_instruction}
 
-CURRENT EVENTS SPECIALIZATION:
-- Provide chronological analysis with specific timeline of developments
-- Include multiple stakeholder perspectives and reactions
-- Focus on root causes, escalation patterns, and political implications
-- Analyze government responses, public reactions, and international context
-- Include specific casualty figures, arrest numbers, policy changes with exact dates
-- Use credible news sources, official statements, and expert analysis
-- Address both immediate impacts and longer-term implications"""
+CURRENT EVENTS FOCUS:
+- Provide chronological analysis with timeline
+- Include multiple perspectives and reactions
+- Focus on root causes and political implications
+- Use credible news sources and official statements"""
 
         elif content_type == 'business_financial':
             return f"""{base_instruction}
 
-BUSINESS INTELLIGENCE SPECIALIZATION:
-- Emphasize quantitative financial metrics and performance data
-- Include market analysis, competitive positioning, and valuation metrics
-- Focus on earnings data, revenue figures, profit margins with exact percentages
-- Provide regulatory context and compliance information
-- Use authoritative financial sources: SEC filings, earnings reports, analyst research
-- Include strategic analysis and investment perspective with forward-looking projections"""
-
-        elif content_type == 'sports_news':
-            return f"""{base_instruction}
-
-SPORTS ANALYSIS SPECIALIZATION:
-- Provide real-time match updates with specific scores and statistics
-- Include player performance data, team standings, and historical context
-- Focus on recent form analysis and head-to-head records
-- Use official sports sources and credible sports journalism
-- Include tournament context and upcoming fixture analysis
-- Maintain engaging presentation while ensuring factual accuracy"""
-
-        elif content_type == 'technical_guide':
-            return f"""{base_instruction}
-
-TECHNICAL GUIDANCE SPECIALIZATION:
-- Provide practical implementation details with step-by-step instructions
-- Include code examples, configuration details, and best practices
-- Focus on current industry standards and recent technical updates
-- Address common issues, troubleshooting, and performance optimization
-- Use authoritative technical documentation and official sources
-- Include prerequisites, requirements, and advanced implementation options"""
+BUSINESS ANALYSIS FOCUS:
+- Emphasize financial metrics and performance data
+- Include market analysis and competitive positioning
+- Use financial sources and analyst research
+- Provide investment perspective"""
 
         else:
             return f"""{base_instruction}
 
-COMPREHENSIVE INFORMATION SPECIALIZATION:
-- Provide balanced, multi-faceted analysis covering all relevant aspects
-- Include historical context, current developments, and future implications
-- Cover different perspectives from various stakeholders and experts
-- Focus on practical applications and real-world relevance
-- Use diverse, authoritative sources across multiple domains
-- Structure information for maximum comprehension and practical utility"""
+COMPREHENSIVE ANALYSIS:
+- Provide balanced, multi-faceted analysis
+- Include current developments and implications
+- Use diverse, authoritative sources
+- Structure for maximum comprehension"""
 
+    # Simplified helper methods without regex
     @staticmethod
-    def _post_process_nepal_style_response(response_text: str, analysis: Dict[str, str]) -> str:
-        """Post-process response to ensure Nepal Gen Z style formatting"""
-        
-        if not response_text:
-            return response_text
-        
-        # Clean up the response text
-        response_text = response_text.strip()
-        
-        # Ensure proper numbered header formatting
-        lines = response_text.split('\n')
-        processed_lines = []
-        
-        for line in lines:
-            line = line.strip()
-            
-            # Ensure numbered headers are properly formatted as ## headers
-            if re.match(r'^\d+\.', line) and not line.startswith('##'):
-                processed_lines.append(f"## {line}")
-            # Handle existing ## headers
-            elif line.startswith('##'):
-                processed_lines.append(line)
-            # Handle bold headers that should be numbered sections  
-            elif line.startswith('**') and line.endswith('**') and len(line) < 100:
-                header_text = line.strip('*').strip()
-                if not re.match(r'^\d+\.', header_text):
-                    # Add number if missing
-                    section_num = len([l for l in processed_lines if l.startswith('## ')]) + 1
-                    processed_lines.append(f"## {section_num}. {header_text}")
-                else:
-                    processed_lines.append(f"## {header_text}")
-            else:
-                processed_lines.append(line)
-        
-        # Reconstruct response
-        formatted_response = '\n'.join(processed_lines)
-        
-        # Ensure proper spacing between sections
-        formatted_response = re.sub(r'\n## ', '\n\n## ', formatted_response)
-        formatted_response = re.sub(r'\n{3,}', '\n\n', formatted_response)
-        
-        # Clean up beginning of response
-        formatted_response = re.sub(r'^[\n\s]*', '', formatted_response)
-        
-        return formatted_response.strip()
-
-    # All the missing helper methods that your code needs
-    @staticmethod
-    def _extract_response_text(response) -> str:
-        """Extract response text from Gemini response object"""
+    def _extract_response_text_simple(response) -> str:
+        """Extract response text without regex"""
         
         if hasattr(response, 'text'):
             return response.text
@@ -763,8 +557,8 @@ COMPREHENSIVE INFORMATION SPECIALIZATION:
             return "No response text generated"
 
     @staticmethod
-    def _extract_sources_with_quality_filter(response) -> List[Dict[str, str]]:
-        """Extract and filter sources from grounded response - reuses existing logic"""
+    def _extract_sources_simple(response) -> List[Dict[str, str]]:
+        """Extract sources without complex processing"""
         
         sources = []
         try:
@@ -774,50 +568,23 @@ COMPREHENSIVE INFORMATION SPECIALIZATION:
                 metadata = response.candidates[0].grounding_metadata
                 
                 if hasattr(metadata, 'grounding_chunks'):
-                    source_to_chunks = {}
-                    unique_sources_count = 0
-                    
                     for chunk in metadata.grounding_chunks:
-                        if (hasattr(chunk, 'web') and chunk.web and chunk.web.uri and 
-                            unique_sources_count < 19):
-                            
+                        if (hasattr(chunk, 'web') and chunk.web and chunk.web.uri):
                             uri = chunk.web.uri
                             title = getattr(chunk.web, 'title', 'Unknown')
+                            sources.append({'title': title, 'uri': uri})
                             
-                            # Check if it's a quality source using existing method
-                            is_quality = GeminiGroundingSearch._is_quality_source(uri, title)
-                            
-                            if uri not in source_to_chunks:
-                                source_to_chunks[uri] = {
-                                    'title': title,
-                                    'uri': uri,
-                                    'is_quality': is_quality
-                                }
-                                unique_sources_count += 1
-                    
-                    # Sort sources by quality first
-                    quality_sources = [s for s in source_to_chunks.values() if s['is_quality']]
-                    other_sources = [s for s in source_to_chunks.values() if not s['is_quality']]
-                    
-                    # Prioritize quality sources
-                    all_sources = quality_sources + other_sources[:19-len(quality_sources)]
-                    
-                    for source_data in all_sources:
-                        sources.append({
-                            'title': source_data['title'],
-                            'uri': source_data['uri']
-                        })
-                    
-                    print(f"Debug: Quality sources: {len(quality_sources)}/{len(source_to_chunks)}")
-                            
+                            if len(sources) >= 10:  # Limit sources
+                                break
+                        
         except Exception as e:
             print(f"Source extraction error: {e}")
         
         return sources
 
     @staticmethod
-    def _extract_search_queries(response) -> List[str]:
-        """Extract search queries from grounded response"""
+    def _extract_search_queries_simple(response) -> List[str]:
+        """Extract search queries simply"""
         
         search_queries = []
         try:
@@ -828,36 +595,52 @@ COMPREHENSIVE INFORMATION SPECIALIZATION:
                 
                 if hasattr(metadata, 'web_search_queries'):
                     search_queries = list(metadata.web_search_queries)
-                            
+                        
         except Exception as e:
             print(f"Search query extraction error: {e}")
         
         return search_queries
 
     @staticmethod
-    def _get_adaptive_token_limit(analysis: Dict[str, str]) -> int:
-        """Set token limits based on response requirements"""
+    def _post_process_simple(response_text: str, analysis: Dict[str, str]) -> str:
+        """Simple post-processing without regex"""
         
-        response_depth = analysis.get('response_depth', 'detailed')
-        query_type = analysis.get('query_type', 'general_info')
-        target_length = analysis.get('target_length', '1000')
-        content_type = analysis.get('content_type', 'general_comprehensive')
+        if not response_text:
+            return response_text
         
-        # Convert target length to int and add buffer
-        try:
-            base_tokens = int(target_length.replace(' words', '').replace('~', ''))
-            token_buffer = int(base_tokens * 0.3)  # 30% buffer
-            total_tokens = base_tokens + token_buffer
-        except:
-            total_tokens = 1000
+        # Simple formatting improvements
+        lines = response_text.split('\n')
+        processed_lines = []
         
-        # Apply limits based on content type and complexity
-        if content_type == 'current_events' or content_type == 'business_financial':
-            return min(max(total_tokens, 2000), 6000)
-        elif content_type == 'sports_news':
-            return min(max(total_tokens, 800), 2000)
-        else:
-            return min(max(total_tokens, 1000), 3000)
+        for line in lines:
+            line = line.strip()
+            
+            # Simple header detection without regex
+            if line and (line.startswith('1.') or line.startswith('2.') or line.startswith('3.') or 
+                        line.startswith('4.') or line.startswith('5.') or line.startswith('6.') or
+                        line.startswith('7.') or line.startswith('8.')):
+                if not line.startswith('##'):
+                    processed_lines.append(f"## {line}")
+                else:
+                    processed_lines.append(line)
+            else:
+                processed_lines.append(line)
+        
+        # Reconstruct and clean up
+        formatted_response = '\n'.join(processed_lines)
+        
+        # Simple spacing fixes
+        formatted_response = formatted_response.replace('\n## ', '\n\n## ')
+        
+        # Remove excessive newlines
+        while '\n\n\n' in formatted_response:
+            formatted_response = formatted_response.replace('\n\n\n', '\n\n')
+        
+        return formatted_response.strip()
+
+   
+
+    
 
     
 
