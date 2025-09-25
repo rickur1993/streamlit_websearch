@@ -104,60 +104,7 @@ class GeminiGroundingSearch:
         else:
             return "No SDK Available", "None", False
     
-    @staticmethod
-    def create_enhanced_prompt(query: str) -> str:
-        """Create comprehensive, business intelligence focused prompt"""
-        return f"""
-        You are a professional research analyst and business intelligence expert providing comprehensive analysis for: "{query}"
-        
-        RESEARCH REQUIREMENTS:
-        - Use Google Search grounding to find the most current 2024-2025 data and developments
-        - Include specific quantitative metrics (financial figures, percentages, exact dates, market data)
-        - Provide detailed company-by-company or topic-by-topic analysis with supporting evidence
-        - Include recent regulatory changes, market trends, and strategic developments
-        - User context: India-based professional in pharmaceutical and finance sectors
-        
-        RESPONSE STRUCTURE (MANDATORY):
-        
-        ## Executive Summary
-        2-3 sentences highlighting key findings with specific metrics and recent developments.
-        
-        ## Detailed Analysis
-        ### [Primary Topic/Company 1]
-        - Current performance data with exact figures and percentages
-        - Recent developments in last 6-12 months with dates
-        - Key growth drivers and strategic initiatives
-        - Market position and competitive advantages
-        
-        ### [Primary Topic/Company 2] 
-        - [Same detailed structure as above]
-        
-        ## Key Metrics & Financial Data
-        - Specific revenue figures, profit margins, growth rates
-        - Stock performance data with exact percentage changes
-        - Market capitalization and valuation metrics
-        - Regulatory compliance and approval data
-        
-        ## Recent Developments (2024-2025)
-        - Latest regulatory changes with specific dates
-        - New product launches, acquisitions, partnerships
-        - Market trends and industry shifts
-        
-        ## Strategic Outlook & Implications
-        - Forward-looking analysis and growth projections
-        - Risk factors and mitigation strategies
-        - Investment considerations and recommendations
-        
-        CRITICAL REQUIREMENTS:
-        - Use Google Search grounding for ALL factual claims
-        - Include specific dates, figures, and percentages throughout
-        - Minimum 400 words for comprehensive coverage
-        - Structure as professional business intelligence report
-        - Prioritize Indian market context and regulatory environment
-        -Less verbose and more to the point
-        
-        This query requires comprehensive web search to provide current, detailed business intelligence.
-        """
+    
 
     @staticmethod
     def _is_quality_source(uri: str, title: str) -> bool:
@@ -197,160 +144,273 @@ class GeminiGroundingSearch:
             return structured_response
             
         return response_text
-
     @staticmethod
     def search_with_new_sdk(query: str) -> SearchResult:
-        """Enhanced search using new SDK with corrected grounding tool configuration"""
-        start_time = time.time()
-        try:
-            client = genai.Client(api_key=GEMINI_API_KEY)
+            """Chain-enabled adaptive search with dynamic prompt generation"""
+            start_time = time.time()
+            try:
+                client = genai.Client(api_key=GEMINI_API_KEY)
+                
+                # Step 1: Execute Analysis Chain
+                analysis_result = GeminiGroundingSearch._execute_analysis_chain(client, query)
+                
+                # Step 2: Execute Content Generation Chain
+                content_result = GeminiGroundingSearch._execute_content_chain(
+                    client, query, analysis_result
+                )
+                
+                response_time = time.time() - start_time
+                model_used = "gemini-2.5-flash-lite (Chain Prompting)"
+                
+                return SearchResult(
+                    success=True,
+                    response=content_result.get('response_text', ''),
+                    sources=content_result.get('sources', []),
+                    search_queries=content_result.get('search_queries', []),
+                    model=model_used,
+                    timestamp=datetime.now().isoformat(),
+                    response_time=response_time,
+                    has_grounding=content_result.get('has_grounding', False)
+                )
+                
+            except Exception as e:
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=[],
+                    model="gemini-2.5-flash-lite (Chain Error)",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=time.time() - start_time,
+                    error=str(e),
+                    has_grounding=False
+                )
+
+    @staticmethod
+    def _execute_analysis_chain(client, query: str) -> Dict[str, str]:
+            """Step 1: Analyze query and determine optimal response strategy"""
             
-            # Fixed grounding tool (removed unsupported dynamic_retrieval_config)
+            analysis_prompt = f"""Analyze this query and determine the optimal response approach: "{query}"
+
+        <task>
+        Classify the query and determine response strategy:
+
+        1. Query Type Analysis:
+        - business_financial: Requires detailed metrics, financial data, regulatory info
+        - sports_news: Needs current updates, scores, recent developments  
+        - technical: Requires how-to guidance, implementation details
+        - general_info: Standard informational response
+
+        2. Response Requirements:
+        - brief: 200-400 words, focused updates
+        - detailed: 400-800 words, comprehensive coverage
+        - comprehensive: 800-1500 words, full business intelligence
+
+        3. Structure Format:
+        - executive_summary: Business format with sections
+        - narrative: Flowing informational text
+        - structured_updates: Clear sections with current info
+        - mixed: Adaptive based on content
+        </task>
+
+        <output_format>
+        Query_Type: [business_financial|sports_news|technical|general_info]
+        Response_Depth: [brief|detailed|comprehensive]  
+        Structure_Format: [executive_summary|narrative|structured_updates|mixed]
+        Key_Focus: [brief description of what to emphasize]
+        </output_format>
+
+        Provide concise analysis:"""
+
+            try:
+                config = types.GenerateContentConfig(
+                    response_modalities=['TEXT'],
+                    max_output_tokens=300,
+                    system_instruction="You are a query analysis expert. Provide precise, structured analysis for adaptive response generation. Be concise and specific."
+                )
+                
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash-lite",
+                    contents=analysis_prompt,
+                    config=config
+                )
+                
+                analysis_text = response.text if response.text else "Analysis failed"
+                return GeminiGroundingSearch._parse_analysis_response(analysis_text)
+                
+            except Exception as e:
+                print(f"Analysis chain error: {e}")
+                # Fallback analysis based on simple keyword detection
+                return GeminiGroundingSearch._create_fallback_analysis(query)
+
+    @staticmethod
+    def _parse_analysis_response(analysis_text: str) -> Dict[str, str]:
+            """Parse structured analysis response into actionable parameters"""
+            
+            # Default values
+            analysis = {
+                'query_type': 'general_info',
+                'response_depth': 'detailed',
+                'structure_format': 'mixed',
+                'key_focus': 'current comprehensive information'
+            }
+            
+            # Parse the structured output
+            lines = analysis_text.lower().split('\n')
+            for line in lines:
+                if 'query_type:' in line:
+                    analysis['query_type'] = line.split(':', 1)[1].strip()
+                elif 'response_depth:' in line:
+                    analysis['response_depth'] = line.split(':', 1)[1].strip()
+                elif 'structure_format:' in line:
+                    analysis['structure_format'] = line.split(':', 1)[1].strip()
+                elif 'key_focus:' in line:
+                    analysis['key_focus'] = line.split(':', 1)[1].strip()
+            
+            return analysis
+
+    @staticmethod
+    def _create_fallback_analysis(query: str) -> Dict[str, str]:
+            """Create fallback analysis when chain analysis fails"""
+            
+            query_lower = query.lower()
+            
+            # Simple keyword-based classification
+            business_keywords = ['stock', 'financial', 'revenue', 'profit', 'company', 'business', 'pharmaceutical', 'earnings', 'market']
+            sports_keywords = ['cricket', 'match', 'score', 'game', 'sports', 'team', 'tournament']
+            tech_keywords = ['api', 'code', 'technical', 'programming', 'how to', 'implementation']
+            
+            if any(keyword in query_lower for keyword in business_keywords):
+                return {
+                    'query_type': 'business_financial',
+                    'response_depth': 'comprehensive', 
+                    'structure_format': 'executive_summary',
+                    'key_focus': 'financial metrics and business intelligence'
+                }
+            elif any(keyword in query_lower for keyword in sports_keywords):
+                return {
+                    'query_type': 'sports_news',
+                    'response_depth': 'brief',
+                    'structure_format': 'structured_updates', 
+                    'key_focus': 'current scores and recent developments'
+                }
+            elif any(keyword in query_lower for keyword in tech_keywords):
+                return {
+                    'query_type': 'technical',
+                    'response_depth': 'detailed',
+                    'structure_format': 'mixed',
+                    'key_focus': 'implementation guidance and best practices'
+                }
+            else:
+                return {
+                    'query_type': 'general_info',
+                    'response_depth': 'detailed',
+                    'structure_format': 'narrative',
+                    'key_focus': 'comprehensive current information'
+                }
+
+    @staticmethod
+    def _execute_content_chain(client, query: str, analysis: Dict[str, str]) -> Dict[str, Any]:
+            """Step 2: Generate adaptive content with grounding based on analysis"""
+            
+            # Generate adaptive prompt and configuration
+            content_prompt = GeminiGroundingSearch._create_adaptive_prompt(query, analysis)
+            system_instruction = GeminiGroundingSearch._create_adaptive_system_instruction(analysis)
+            
+            # Setup grounding tool
             grounding_tool = types.Tool(google_search=types.GoogleSearch())
             
-            # Simplified config to avoid validation errors
             config = types.GenerateContentConfig(
                 tools=[grounding_tool],
                 response_modalities=['TEXT'],
-                system_instruction="""You are an expert business analyst and researcher specializing in Indian pharmaceutical 
-                and finance markets. You MUST use Google Search grounding extensively for current information.
-                
-                CRITICAL SEARCH BEHAVIOR:
-                - Always perform multiple Google searches for comprehensive coverage
-                - Search for 2024-2025 specific data and recent developments
-                - Include specific quantitative data in every response
-                - Structure responses as professional business intelligence reports
-                - Provide detailed company-specific or sector-specific analysis
-                - Include regulatory and compliance information for Indian context
-                - Use authoritative financial and pharmaceutical sources
-                - Cross-verify information from multiple sources
-                
-                
-                RESPONSE STRUCTURE REQUIRED:
-                1. **Executive Summary** (2-3 sentences with key findings)
-                2. **Detailed Analysis** with subheadings for each major point
-                3. **Key Metrics & Data** (use specific numbers, percentages, dates)
-                4. **Recent Developments** (last 6-12 months)
-                5. **Strategic Implications** and outlook
-                6. **Summary Table** ( wherever applicable )
-                7. **Actionable Recommendation** ( wherever applicable )
-                
-                
-                You must ground ALL factual claims with web search. This is mandatory."""
+                max_output_tokens=GeminiGroundingSearch._get_adaptive_token_limit(analysis),
+                system_instruction=system_instruction
             )
-            
-            # Use enhanced prompt instead of basic query
-            enhanced_prompt = GeminiGroundingSearch.create_enhanced_prompt(query)
-            
-            response = client.models.generate_content(
-                model="gemini-2.5-flash-lite",
-                contents=enhanced_prompt,
-                config=config
-            )
-            
-            response_time = time.time() - start_time
-            model_used = "gemini-2.5-flash-lite (New SDK)"
-            
-            # Enhanced metadata extraction with quality filtering
-            sources = []
-            search_queries = []
-            has_grounding = False
             
             try:
-                if (response.candidates and 
-                    hasattr(response.candidates[0], 'grounding_metadata')):
-                    
-                    metadata = response.candidates[0].grounding_metadata
-                    has_grounding = True
-                    
-                    if hasattr(metadata, 'web_search_queries'):
-                        search_queries = list(metadata.web_search_queries)
-                    
-                    if hasattr(metadata, 'grounding_chunks'):
-                        source_to_chunks = {}
-                        unique_sources_count = 0
-                        quality_sources_count = 0
-                        
-                        for chunk in metadata.grounding_chunks:
-                            if (hasattr(chunk, 'web') and chunk.web and chunk.web.uri and 
-                                unique_sources_count <10):
-                                
-                                uri = chunk.web.uri
-                                title = getattr(chunk.web, 'title', 'Unknown')
-                                
-                                # Check if it's a quality source
-                                is_quality = GeminiGroundingSearch._is_quality_source(uri, title)
-                                
-                                if uri not in source_to_chunks:
-                                    source_to_chunks[uri] = {
-                                        'title': title,
-                                        'uri': uri,
-                                        'chunks': [],
-                                        'is_quality': is_quality
-                                    }
-                                    unique_sources_count += 1
-                                    if is_quality:
-                                        quality_sources_count += 1
-                                
-                                source_to_chunks[uri]['chunks'].append(chunk)
-                        
-                        # Sort sources by quality first
-                        quality_sources = [s for s in source_to_chunks.values() if s['is_quality']]
-                        other_sources = [s for s in source_to_chunks.values() if not s['is_quality']]
-                        
-                        # Prioritize quality sources
-                        all_sources = quality_sources + other_sources[:10-len(quality_sources)]
-                        
-                        for source_data in all_sources:
-                            sources.append({
-                                'title': source_data['title'],
-                                'uri': source_data['uri']
-                            })
-                        
-                        print(f"Debug: Quality sources: {quality_sources_count}/{len(source_to_chunks)}")
-                            
+                # Execute the content generation with grounding
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash-lite",
+                    contents=content_prompt,
+                    config=config
+                )
+                
+                # Extract response content and metadata using existing logic
+                response_text = GeminiGroundingSearch._extract_response_text(response)
+                sources = GeminiGroundingSearch._extract_sources_with_quality_filter(response)
+                search_queries = GeminiGroundingSearch._extract_search_queries(response)
+                has_grounding = len(sources) > 0
+                
+                # Post-process response based on analysis
+                processed_response = GeminiGroundingSearch._post_process_adaptive_response(
+                    response_text, analysis
+                )
+                
+                return {
+                    'response_text': processed_response,
+                    'sources': sources,
+                    'search_queries': search_queries,
+                    'has_grounding': has_grounding,
+                    'analysis_used': analysis
+                }
+                
             except Exception as e:
-                print(f"Metadata extraction error: {e}")
-                pass
-            
-            # Extract response text
-            response_text = ""
-            if hasattr(response, 'text'):
-                response_text = response.text
-            elif response.candidates and response.candidates[0].content.parts:
-                response_text = ''.join([
-                    part.text for part in response.candidates[0].content.parts 
-                    if hasattr(part, 'text')
-                ])
-            
-            # Post-process response for better structure
-            response_text = GeminiGroundingSearch._post_process_response(response_text)
-            
-            return SearchResult(
-                success=True,
-                response=response_text,
-                sources=sources,
-                search_queries=search_queries,
-                model=model_used,
-                timestamp=datetime.now().isoformat(),
-                response_time=response_time,
-                has_grounding=has_grounding
-            )
-            
-        except Exception as e:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="gemini-2.5-flash-lite (Error)",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error=str(e),
-                has_grounding=False
-            )
+                print(f"Content chain error: {e}")
+                return {
+                    'response_text': f"Error generating content: {str(e)}",
+                    'sources': [],
+                    'search_queries': [],
+                    'has_grounding': False,
+                    'analysis_used': analysis
+                }
 
-        
+    @staticmethod
+    def _create_adaptive_prompt(query: str, analysis: Dict[str, str]) -> str:
+            """Generate content prompt adapted to query analysis"""
+            
+            query_type = analysis.get('query_type', 'general_info')
+            structure_format = analysis.get('structure_format', 'mixed')
+            key_focus = analysis.get('key_focus', 'comprehensive information')
+            
+            if query_type == 'business_financial' and structure_format == 'executive_summary':
+                return f"""Provide comprehensive business intelligence analysis for: "{query}"
+
+        <requirements>
+        - Use Google Search extensively for current 2024-2025 financial and market data
+        - Include specific metrics, percentages, dates, and quantitative analysis
+        - Focus on {key_focus}
+        - Prioritize Indian market context and regulatory environment when applicable
+        </requirements>
+
+        <response_structure>
+        ## Executive Summary
+        Key findings with specific metrics and recent developments (2-3 sentences).
+
+        ## Detailed Analysis
+        ### Primary Topic/Company Analysis
+        - Current performance data with exact figures and percentages
+        - Recent developments (last 6-12 months) with specific dates
+        - Key growth drivers and strategic initiatives
+        - Market position and competitive advantages
+
+        ## Key Metrics & Financial Data
+        - Revenue figures, profit margins, growth rates with exact numbers
+        - Stock performance data with percentage changes
+        - Market capitalization and valuation metrics
+        - Regulatory compliance and approval data
+
+        ## Recent Developments (2024-2025)
+        - Latest regulatory changes with specific dates
+        - New product launches, acquisitions, partnerships
+        - Market trends and industry shifts
+
+        ## Strategic Outlook & Implications
+        - Forward-looking analysis and growth projections
+        - Investment considerations and recommendations
+        </response_structure>
+
+        Provide current, comprehensive business intelligence analysis with extensive search grounding:"""        
+    
     @staticmethod
     def search_with_legacy_sdk(query: str) -> SearchResult:
             """Optimized legacy SDK search with Gemini 2.5 Flash only"""
