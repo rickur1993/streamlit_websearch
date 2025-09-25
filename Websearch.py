@@ -352,6 +352,12 @@ Provide structural analysis:"""
         """
 
         # Call your LLM or chain client with the prompt
+        # Initialize client
+        client = genai.Client(api_key=GEMINI_API_KEY)
+
+# Call the header generation method with client and query
+        headers = GeminiGroundingSearch._generate_dynamic_headers_via_llm(client, query)
+
         response = client.chat.complete(prompt)
 
         # Parse the numbered list from response text
