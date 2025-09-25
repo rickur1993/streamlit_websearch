@@ -258,129 +258,129 @@ Provide structural analysis:"""
                     analysis['target_length'] = parts[1].strip()
         
         # Generate appropriate headers
-        analysis['dynamic_headers'] = GeminiGroundingSearch._generate_dynamic_headers_via_llm(query, analysis['content_type'])
+        analysis['dynamic_headers'] = GeminiGroundingSearch._generate_context_aware_headers_simple(query, analysis['content_type'])
         
         return analysis
     
 
-    # @staticmethod
-    # def _generate_context_aware_headers_simple(query: str, content_type: str) -> List[str]:
-    #     """Generate context-aware headers without regex"""
-        
-    #     query_lower = query.lower()
-        
-    #     # Simple keyword checking without regex
-    #     current_event_keywords = ['unrest', 'protest', 'crisis', 'violence', 'election', 'conflict', 'news']
-    #     business_keywords = ['company', 'stock', 'earnings', 'financial', 'market', 'revenue', 'business']
-    #     sports_keywords = ['cricket', 'match', 'score', 'tournament', 'game', 'team', 'sports']
-    #     tech_keywords = ['api', 'code', 'implementation', 'setup', 'configuration', 'technical']
-        
-    #     # Check for current events
-    #     if content_type == 'current_events' or any(word in query_lower for word in current_event_keywords):
-    #         return [
-    #             "1. Background & Root Causes",
-    #             "2. Timeline of Key Events", 
-    #             "3. Major Developments & Escalation",
-    #             "4. Government Response & Political Fallout",
-    #             "5. Multiple Perspectives & Reactions",
-    #             "6. Current Status & Recent Developments",
-    #             "7. Regional Context & Implications",
-    #             "8. Summary & Outlook"
-    #         ]
-        
-    #     # Check for business/financial
-    #     elif content_type == 'business_financial' or any(word in query_lower for word in business_keywords):
-    #         return [
-    #             "1. Executive Summary",
-    #             "2. Current Financial Performance",
-    #             "3. Market Position & Competitive Analysis", 
-    #             "4. Recent Strategic Developments",
-    #             "5. Key Metrics & Financial Data",
-    #             "6. Summary table",
-    #             "7. Growth Prospects & Challenges",
-    #             "8. Investment Analysis & Outlook"
-    #         ]
-        
-    #     # Check for sports
-    #     elif content_type == 'sports_news' or any(word in query_lower for word in sports_keywords):
-    #         return [
-    #             "1. Current Match Status",
-    #             "2. Key Performance Statistics",
-    #             "3. Player & Team Analysis",
-    #             "4. Recent Form & Head-to-Head",
-    #             "5. Tournament Context & Standings",
-    #             "6. Upcoming Fixtures & Predictions"
-    #         ]
-        
-    #     # Check for technical
-    #     elif content_type == 'technical_guide' or any(word in query_lower for word in tech_keywords):
-    #         return [
-    #             "1. Technical Overview",
-    #             "2. Prerequisites & Requirements",
-    #             "3. Step-by-Step Implementation",
-    #             "4. Configuration & Setup",
-    #             "5. Best Practices & Optimization",
-    #             "6. Common Issues & Troubleshooting"
-    #         ]
-        
-    #     # Default general structure
-    #     else:
-    #         return [
-    #             "1. Overview & Background",
-    #             "2. Key Details & Current Information",
-    #             "3. Recent Developments & Changes",
-    #             "4. Multiple Perspectives & Analysis",
-    #             "5. Implications & Impact",
-    #             "6. Future Outlook & Considerations"
-    #         ]
     @staticmethod
-    def _generate_dynamic_headers_via_llm(client, query: str) -> List[str]:
-        """
-        Use the LLM to generate context-aware, dynamic section headers based on the query.
-        """
-        prompt = f"""
-        Given the query below, generate  numbered list of suitable section headers for a
-        comprehensive structured report summarizing key topics and aspects relevant to the query.
-        Only output the list of headers in order, each preceded by its number.
-
-        Query: "{query}"
-
-        Example output:
-        1. Introduction
-        2. Background
-        ...
-        """
-
-        # Call your LLM or chain client with the prompt
-        # Initialize client
-        client = genai.Client(api_key=GEMINI_API_KEY)
-
-# Call the header generation method with client and query
-        headers = GeminiGroundingSearch._generate_dynamic_headers_via_llm(client, query)
-
-        response = client.chat.complete(prompt)
-
-        # Parse the numbered list from response text
-        headers = []
-        for line in response.text.splitlines():
-            line = line.strip()
-            if line and line[0].isdigit() and '.' in line:
-                # Parse header text after the first number and dot
-                header_text = line.split('.', 1)[1].strip()
-                headers.append(header_text)
-
-        # Fallback to default if no headers found
-        if not headers:
-            headers = [
-                "Overview & Background",
-                "Key Details & Current Information",
-                "Recent Developments & Changes",
-                "Multiple Perspectives & Analysis",
-                "Implications & Impact",
-                "Future Outlook & Considerations"
+    def _generate_context_aware_headers_simple(query: str, content_type: str) -> List[str]:
+        """Generate context-aware headers without regex"""
+        
+        query_lower = query.lower()
+        
+        # Simple keyword checking without regex
+        current_event_keywords = ['unrest', 'protest', 'crisis', 'violence', 'election', 'conflict', 'news']
+        business_keywords = ['company', 'stock', 'earnings', 'financial', 'market', 'revenue', 'business']
+        sports_keywords = ['cricket', 'match', 'score', 'tournament', 'game', 'team', 'sports']
+        tech_keywords = ['api', 'code', 'implementation', 'setup', 'configuration', 'technical']
+        
+        # Check for current events
+        if content_type == 'current_events' or any(word in query_lower for word in current_event_keywords):
+            return [
+                "1. Background & Root Causes",
+                "2. Timeline of Key Events", 
+                "3. Major Developments & Escalation",
+                "4. Government Response & Political Fallout",
+                "5. Multiple Perspectives & Reactions",
+                "6. Current Status & Recent Developments",
+                "7. Regional Context & Implications",
+                "8. Summary & Outlook"
             ]
+        
+        # Check for business/financial
+        elif content_type == 'business_financial' or any(word in query_lower for word in business_keywords):
+            return [
+                "1. Executive Summary",
+                "2. Current Financial Performance",
+                "3. Market Position & Competitive Analysis", 
+                "4. Recent Strategic Developments",
+                "5. Key Metrics & Financial Data",
+                "6. Summary table",
+                "7. Growth Prospects & Challenges",
+                "8. Investment Analysis & Outlook"
+            ]
+        
+        # Check for sports
+        elif content_type == 'sports_news' or any(word in query_lower for word in sports_keywords):
+            return [
+                "1. Current Match Status",
+                "2. Key Performance Statistics",
+                "3. Player & Team Analysis",
+                "4. Recent Form & Head-to-Head",
+                "5. Tournament Context & Standings",
+                "6. Upcoming Fixtures & Predictions"
+            ]
+        
+        # Check for technical
+        elif content_type == 'technical_guide' or any(word in query_lower for word in tech_keywords):
+            return [
+                "1. Technical Overview",
+                "2. Prerequisites & Requirements",
+                "3. Step-by-Step Implementation",
+                "4. Configuration & Setup",
+                "5. Best Practices & Optimization",
+                "6. Common Issues & Troubleshooting"
+            ]
+        
+        # Default general structure
+        else:
+            return [
+                "1. Overview & Background",
+                "2. Key Details & Current Information",
+                "3. Recent Developments & Changes",
+                "4. Multiple Perspectives & Analysis",
+                "5. Implications & Impact",
+                "6. Future Outlook & Considerations"
+            ]
+#     @staticmethod
+#     def _generate_dynamic_headers_via_llm(client, query: str) -> List[str]:
+#         """
+#         Use the LLM to generate context-aware, dynamic section headers based on the query.
+#         """
+#         prompt = f"""
+#         Given the query below, generate  numbered list of suitable section headers for a
+#         comprehensive structured report summarizing key topics and aspects relevant to the query.
+#         Only output the list of headers in order, each preceded by its number.
 
-        return headers
+#         Query: "{query}"
+
+#         Example output:
+#         1. Introduction
+#         2. Background
+#         ...
+#         """
+
+#         # Call your LLM or chain client with the prompt
+#         # Initialize client
+#         client = genai.Client(api_key=GEMINI_API_KEY)
+
+# # Call the header generation method with client and query
+#         headers = GeminiGroundingSearch._generate_context_aware_headers_simple(client, query)
+
+#         response = client.chat.complete(prompt)
+
+#         # Parse the numbered list from response text
+#         headers = []
+#         for line in response.text.splitlines():
+#             line = line.strip()
+#             if line and line[0].isdigit() and '.' in line:
+#                 # Parse header text after the first number and dot
+#                 header_text = line.split('.', 1)[1].strip()
+#                 headers.append(header_text)
+
+#         # Fallback to default if no headers found
+#         if not headers:
+#             headers = [
+#                 "Overview & Background",
+#                 "Key Details & Current Information",
+#                 "Recent Developments & Changes",
+#                 "Multiple Perspectives & Analysis",
+#                 "Implications & Impact",
+#                 "Future Outlook & Considerations"
+#             ]
+
+#         return headers
 
 
     @staticmethod
@@ -410,7 +410,7 @@ Provide structural analysis:"""
             'content_type': content_type,
             'complexity_level': 'complex',
             'target_length': target_length,
-            'dynamic_headers': GeminiGroundingSearch._generate_dynamic_headers_via_llm(query, content_type)
+            'dynamic_headers': GeminiGroundingSearch._generate_context_aware_headers_simple(query, content_type)
         }
 
     @staticmethod
