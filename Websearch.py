@@ -461,97 +461,11 @@ COMPREHENSIVE ANALYSIS:
 - Structure information logically without duplication"""
 
 
-    @staticmethod
-    def _comprehensive_cleanup(response_text: str, analysis: Dict[str, str]) -> str:
-        """Fixed cleanup that prevents text corruption"""
-        
-        if not response_text:
-            return response_text
-        
-        print("Debug: Starting comprehensive cleanup...")
-        
-        # Step 1: Fix corrupted text patterns first
-        response_text = GeminiGroundingSearch._fix_corrupted_text(response_text)
-        
-        # Step 2: Clean citations properly
-        response_text = GeminiGroundingSearch._fix_citations_properly(response_text)
-        
-        # Step 3: Remove duplicate sections without corrupting text
-        response_text = GeminiGroundingSearch._remove_duplicates_safely(response_text)
-        
-        # Step 4: Fix spacing and formatting
-        response_text = response_text.replace('\n## ', '\n\n## ')
-        while '\n\n\n' in response_text:
-            response_text = response_text.replace('\n\n\n', '\n\n')
-        
-        return response_text.strip()
-    @staticmethod
-    def _fix_corrupted_text(text: str) -> str:
-        """Fix corrupted number formatting and text issues"""
-        import re
-        
-        # Fix corrupted currency patterns like "30.5billioninFiscalYear2025"
-        text = re.sub(r'(\d+\.?\d*)(billion|million)(in|In)([A-Z])', r'\1 \2 \3 \4', text)
-        text = re.sub(r'(\d+\.?\d*)(billion|million)(FY|Fiscal)', r'\1 \2 in \3', text)
-        
-        # Fix corrupted percentage patterns like "9.330.5billion"
-        text = re.sub(r'(\d+\.\d+)(\d+\.\d+)(billion|million)', r'\1% increase to $\2 \3', text)
-        
-        # Fix currency formatting
-        text = re.sub(r'\$(\d+)\.(\d+)billion', r'$\1.\2 billion', text)
-        text = re.sub(r'\$(\d+)million', r'$\1 million', text)
-        
-        # Fix table separators that got corrupted
-        text = re.sub(r'∣', '|', text)
-        text = re.sub(r'∣', '|', text)
-        
-        return text
-    @staticmethod
-    def _fix_citations_properly(text: str) -> str:
-        """Replace generic citations with clean format"""
-        
-        # Remove generic (source.com) citations
-        text = text.replace('(source.com)', '')
-        
-        # Clean up numbered citations more carefully
-        import re
-        text = re.sub(r'\s*\[\d+(?:,\s*\d+)*\]\s*', ' ', text)
-        
-        # Clean up double spaces
-        text = re.sub(r'\s+', ' ', text)
-        
-        return text
+    
+    
+    
 
-    @staticmethod
-    def _remove_duplicates_safely(text: str) -> str:
-        """Remove duplicates without corrupting text"""
-        
-        sections = text.split('## ')
-        unique_sections = []
-        seen_headers = set()
-        
-        for i, section in enumerate(sections):
-            if i == 0:  # First section before any headers
-                unique_sections.append(section)
-                continue
-            
-            # Extract section number from header
-            lines = section.split('\n')
-            if lines:
-                header = lines[0].strip()
-                section_num = None
-                
-                # Simple section number extraction
-                for num in range(1, 10):
-                    if f'{num}.' in header:
-                        section_num = num
-                        break
-                
-                if section_num and section_num not in seen_headers:
-                    seen_headers.add(section_num)
-                    unique_sections.append(section)
-        
-        return '## '.join(unique_sections)
+    
 
     @staticmethod
     def _create_anti_duplication_prompt(query: str, analysis: Dict[str, str]) -> str:
@@ -588,48 +502,9 @@ COMPREHENSIVE ANALYSIS:
         return prompt
 
 
-    @staticmethod
-    def _clean_citations(text: str) -> str:
-        """Convert messy numbered citations to clean inline citations"""
-        
-        # Remove numbered citation patterns like [1, 2, 3, 4, 5] or [2, 12, 16, 19, 28]
-        import re
-        
-        # Pattern to match numbered citations like [1, 2, 3] or [2]
-        citation_pattern = r'\[[\d,\s]+\]'
-        
-        # Remove all numbered citation patterns
-        cleaned_text = re.sub(citation_pattern, '', text)
-        
-        # Clean up any double spaces left behind
-        cleaned_text = re.sub(r'\s+', ' ', cleaned_text)
-        
-        # Clean up spaces before punctuation
-        cleaned_text = re.sub(r'\s+([.,;:])', r'\1', cleaned_text)
-        
-        return cleaned_text
+    
 
-    @staticmethod
-    def _remove_duplicate_paragraphs(text: str) -> str:
-        """Remove duplicate paragraphs while preserving order"""
-        
-        paragraphs = text.split('\n\n')
-        seen_paragraphs = set()
-        unique_paragraphs = []
-        
-        for paragraph in paragraphs:
-            # Normalize paragraph for comparison (remove extra spaces)
-            normalized = ' '.join(paragraph.split())
-            
-            # Skip very short paragraphs or duplicates
-            if len(normalized) > 10 and normalized not in seen_paragraphs:
-                seen_paragraphs.add(normalized)
-                unique_paragraphs.append(paragraph)
-            elif len(normalized) <= 10:
-                # Keep short paragraphs (like headers) without duplication check
-                unique_paragraphs.append(paragraph)
-        
-        return '\n\n'.join(unique_paragraphs)
+    
 
     @staticmethod
     def _extract_sources_clean(response) -> List[Dict[str, str]]:
@@ -680,27 +555,49 @@ COMPREHENSIVE ANALYSIS:
 
     
     @staticmethod
-    
     def _execute_enhanced_content_chain(client, query: str, analysis: Dict[str, str]) -> Dict[str, Any]:
-        """Execute enhanced content generation with FIXED grounding"""
+        """Execute enhanced content generation with WORKING grounding"""
         
-        # Generate simple, clean prompt
-        content_prompt = GeminiGroundingSearch._create_simple_grounding_prompt(query, analysis)
-        system_instruction = GeminiGroundingSearch._create_simple_system_instruction(analysis)
+        # Simple, working prompt
+        content_prompt = f"""Please provide comprehensive, current information about: "{query}"
+
+    Use Google Search to find the most recent 2024-2025 information.
+
+    Please organize your response with clear numbered sections:
+    1. Executive Summary
+    2. Current Financial Performance  
+    3. Market Position & Competitive Analysis
+    4. Recent Strategic Developments
+    5. Key Metrics & Financial Data
+    6. Growth Prospects & Challenges
+    7. Investment Analysis & Outlook
+
+    Requirements:
+    - Use real, current data from reliable sources
+    - Include specific figures, dates, and statistics
+    - Professional business analysis format
+    - Target length: approximately 800-1000 words
+    - Cite sources within your response naturally
+
+    Please provide detailed, accurate information with proper structure."""
+
+        system_instruction = """You are a professional research analyst providing comprehensive business intelligence.
+
+    REQUIREMENTS:
+    - Use Google Search extensively for current, factual information
+    - Include specific data: exact figures, percentages, dates, company names
+    - Structure responses with clear numbered sections using ## headers
+    - Provide authoritative, well-researched analysis
+    - Use natural source citations within your response
+    - Focus on accuracy and professional presentation"""
+
+        # Conservative token limit
+        token_limit = 1500
         
-        # Calculate token limit
-        target_length = analysis.get('target_length', '1000')
         try:
-            token_limit = int(target_length.replace('words', '').replace('~', '').strip()) + 200
-            token_limit = min(max(token_limit, 800), 1800)  # Conservative limit
-        except:
-            token_limit = 1200
-        
-        # FIXED: Try grounding with correct configuration
-        try:
-            print("Debug: Attempting grounding with correct configuration...")
+            print("Debug: Starting grounding attempt...")
             
-            # Use the CORRECT grounding tool configuration for Gemini 2.5
+            # Use the correct grounding configuration
             grounding_tool = types.Tool(
                 google_search=types.GoogleSearch()
             )
@@ -710,29 +607,84 @@ COMPREHENSIVE ANALYSIS:
                 response_modalities=['TEXT'],
                 max_output_tokens=token_limit,
                 system_instruction=system_instruction,
-                temperature=0.1  # Moderate temperature for better grounding
+                temperature=0.1
             )
             
-            print(f"Debug: Using model: gemini-2.5-flash (not flash-lite)")
-            print(f"Debug: Token limit: {token_limit}")
+            print("Debug: Making API call...")
             
-            # FIXED: Use supported model name
+            # Use gemini-2.5-flash (not flash-lite) for grounding
             response = client.models.generate_content(
-                model="gemini-2.5-flash",  # Changed from flash-lite to flash
+                model="gemini-2.5-flash",
                 contents=content_prompt,
                 config=config
             )
             
-            # Extract response and sources with minimal processing
-            response_text = GeminiGroundingSearch._extract_response_text_simple(response)
-            sources = GeminiGroundingSearch._extract_sources_simple(response)
-            search_queries = GeminiGroundingSearch._extract_search_queries_simple(response)
-            has_grounding = len(sources) > 0
+            print("Debug: Processing response...")
             
-            print(f"Debug: Grounding check - {len(sources)} sources, metadata present: {hasattr(response.candidates[0], 'grounding_metadata') if response.candidates else False}")
+            # Simple extraction without corruption
+            response_text = ""
+            if hasattr(response, 'text'):
+                response_text = response.text
+            elif response.candidates and response.candidates[0].content.parts:
+                response_text = ''.join([
+                    part.text for part in response.candidates[0].content.parts 
+                    if hasattr(part, 'text')
+                ])
+            else:
+                response_text = "No response generated"
             
-            # MINIMAL cleanup to avoid corruption
-            cleaned_response = GeminiGroundingSearch._minimal_cleanup(response_text)
+            # Simple source extraction
+            sources = []
+            search_queries = []
+            has_grounding = False
+            
+            try:
+                if (response.candidates and 
+                    hasattr(response.candidates[0], 'grounding_metadata')):
+                    
+                    metadata = response.candidates[0].grounding_metadata
+                    has_grounding = True
+                    
+                    if hasattr(metadata, 'grounding_chunks'):
+                        for chunk in metadata.grounding_chunks:
+                            if (hasattr(chunk, 'web') and chunk.web and chunk.web.uri):
+                                uri = chunk.web.uri
+                                title = getattr(chunk.web, 'title', 'Unknown Source')
+                                
+                                sources.append({
+                                    'title': title[:80],  # Truncate title
+                                    'uri': uri
+                                })
+                                
+                                if len(sources) >= 8:
+                                    break
+                    
+                    if hasattr(metadata, 'web_search_queries'):
+                        search_queries = list(metadata.web_search_queries)
+                        
+            except Exception as e:
+                print(f"Source extraction error: {e}")
+            
+            # MINIMAL cleanup - only fix obvious header formatting
+            cleaned_response = response_text
+            if response_text:
+                lines = response_text.split('\n')
+                cleaned_lines = []
+                
+                for line in lines:
+                    stripped = line.strip()
+                    # Only format numbered sections as headers
+                    if stripped and len(stripped) < 80:  # Only short lines
+                        if any(stripped.startswith(f'{i}.') for i in range(1, 9)):
+                            if not stripped.startswith('##'):
+                                cleaned_lines.append(f"## {stripped}")
+                                continue
+                    cleaned_lines.append(line)
+                
+                cleaned_response = '\n'.join(cleaned_lines)
+                cleaned_response = cleaned_response.replace('\n## ', '\n\n## ')
+            
+            print(f"Debug: Success - {len(sources)} sources, {len(search_queries)} queries")
             
             return {
                 'response_text': cleaned_response,
@@ -742,55 +694,56 @@ COMPREHENSIVE ANALYSIS:
                 'analysis_used': analysis,
                 'debug_info': {
                     'model_used': 'gemini-2.5-flash',
-                    'token_limit': token_limit,
-                    'sources_count': len(sources),
-                    'has_metadata': hasattr(response.candidates[0], 'grounding_metadata') if response.candidates else False
+                    'grounding_status': 'success' if has_grounding else 'no_metadata'
                 }
             }
             
         except Exception as e:
-            print(f"Primary grounding failed: {e}")
-            print("Debug: Attempting fallback with flash...")
+            print(f"Grounding failed: {e}")
             
+            # Simple fallback without complex processing
             try:
-                # Fallback to flash-lite without complex processing
+                print("Debug: Trying fallback...")
+                
                 fallback_config = types.GenerateContentConfig(
-                    tools=[grounding_tool],
                     response_modalities=['TEXT'],
                     max_output_tokens=token_limit,
-                    system_instruction=system_instruction + "\n\nProvide comprehensive response with real data.",
+                    system_instruction=system_instruction,
                     temperature=0.2
                 )
                 
                 fallback_response = client.models.generate_content(
-                    model="gemini-2.5-flash",
+                    model="gemini-2.5-flash-lite",
                     contents=content_prompt,
                     config=fallback_config
                 )
                 
-                fallback_text = GeminiGroundingSearch._extract_response_text_simple(fallback_response)
-                fallback_sources = GeminiGroundingSearch._extract_sources_simple(fallback_response)
-                fallback_queries = GeminiGroundingSearch._extract_search_queries_simple(fallback_response)
-                fallback_grounding = len(fallback_sources) > 0
-                
-                cleaned_fallback = GeminiGroundingSearch._minimal_cleanup(fallback_text)
+                fallback_text = ""
+                if hasattr(fallback_response, 'text'):
+                    fallback_text = fallback_response.text
+                elif fallback_response.candidates and fallback_response.candidates[0].content.parts:
+                    fallback_text = ''.join([
+                        part.text for part in fallback_response.candidates[0].content.parts 
+                        if hasattr(part, 'text')
+                    ])
                 
                 return {
-                    'response_text': cleaned_fallback + ("\n\n*Note: Using fallback model.*" if not fallback_grounding else ""),
-                    'sources': fallback_sources,
-                    'search_queries': fallback_queries,
-                    'has_grounding': fallback_grounding,
+                    'response_text': fallback_text + "\n\n*Note: Generated without live search grounding.*",
+                    'sources': [],
+                    'search_queries': [query],
+                    'has_grounding': False,
                     'analysis_used': analysis,
                     'debug_info': {
-                        'model_used': 'gemini-2.5-flash (fallback)',
+                        'model_used': 'gemini-2.5-flash-lite (fallback)',
                         'primary_error': str(e)
                     }
                 }
                 
             except Exception as fallback_error:
-                print(f"Fallback also failed: {fallback_error}")
+                print(f"Fallback failed: {fallback_error}")
+                
                 return {
-                    'response_text': f"Error: Primary grounding failed ({str(e)}), Fallback failed ({str(fallback_error)})",
+                    'response_text': f"Error: Both primary and fallback failed. Primary: {str(e)}, Fallback: {str(fallback_error)}",
                     'sources': [],
                     'search_queries': [],
                     'has_grounding': False,
@@ -800,6 +753,7 @@ COMPREHENSIVE ANALYSIS:
                         'fallback_error': str(fallback_error)
                     }
                 }
+
 
     @staticmethod
     def _create_simple_grounding_prompt(query: str, analysis: Dict[str, str]) -> str:
