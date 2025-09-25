@@ -552,6 +552,49 @@ COMPREHENSIVE ANALYSIS:
         
         return sources
 
+    def _create_system_instruction(analysis: Dict[str, str]) -> str:
+        content_type = analysis.get('content_type', 'general_comprehensive')
+        base_instruction = """
+    You are an expert research analyst providing comprehensive information.
+    - Write each section header ONLY ONCE
+    - Do NOT duplicate any content or sections
+    - Use clean inline citations: (reuters.com) or [cnn.com]
+    - Do NOT use numbered citation lists like [1,2,3]
+    - Structure responses logically with clear numbered sections
+    - Provide authoritative, well-researched analysis
+    - Cite information sources naturally within your response
+    - Maintain professional tone and clarity.
+    """
+        if content_type == 'business_financial':
+            return base_instruction + """
+    BUSINESS ANALYSIS FOCUS:
+    - Emphasize financial metrics and performance data
+    - Include market and investment analysis
+    """
+        elif content_type == 'current_events':
+            return base_instruction + """
+    CURRENT EVENTS FOCUS:
+    - Provide chronological timeline and multiple perspectives
+    - Emphasize political and social implications
+    """
+        elif content_type == 'sports_news':
+            return base_instruction + """
+    SPORTS NEWS FOCUS:
+    - Detail match status, statistics, and player analysis
+    """
+        elif content_type == 'technical_guide':
+            return base_instruction + """
+    TECHNICAL GUIDE FOCUS:
+    - Provide step-by-step implementation and troubleshooting tips
+    """
+        else:
+            return base_instruction + """
+    GENERAL COMPREHENSIVE ANALYSIS:
+    - Cover multiple aspects with balanced insights
+    """
+
+    # Usage inside _execute_enhanced_content_chain
+    
 
     
     @staticmethod
@@ -559,40 +602,26 @@ COMPREHENSIVE ANALYSIS:
         """Execute enhanced content generation with WORKING grounding"""
         
         # Simple, working prompt
+        headers = analysis.get('dynamic_headers', [])
+        headers_text = "\n".join(f"{idx+1}. {header}" for idx, header in enumerate(headers))
+
         content_prompt = f"""Please provide comprehensive, current information about: "{query}"
 
-    Use Google Search to find the most recent 2024-2025 information.
+        Use Google Search to find the most recent 2024-2025 information.
 
-    Please organize your response with clear numbered sections:
-    1. Executive Summary
-    2. Current Financial Performance  
-    3. Market Position & Competitive Analysis
-    4. Recent Strategic Developments
-    5. Key Metrics & Financial Data
-    6. Summary Table if applicable
-    7. Growth Prospects & Challenges
-    8. Investment Analysis & Outlook
+        Please organize your response with clear numbered sections:
+        {headers_text}
 
-    Requirements:
-    - Use real, current data from reliable sources
-    - Include specific figures, dates, and statistics
-    - Professional business analysis format
-    - Target length: approximately 800-1000 words
-    - Cite sources within your response naturally
-
-    Please provide detailed, accurate information with proper structure."""
-
-        system_instruction = """You are a professional research analyst providing comprehensive business intelligence.
-
-    REQUIREMENTS:
-    - Use Google Search extensively for current, factual information
-    - Include specific data: exact figures, percentages, dates, company names
-    - Structure responses with clear numbered sections using ## headers
-    - Provide authoritative, well-researched analysis
-    - Use natural source citations within your response
-    - Focus on accuracy and professional presentation"""
+        Requirements:
+        - Use real, current data from reliable sources
+        - Include specific figures, dates, and statistics
+        - Professional analysis format
+        - Target length: approximately {analysis.get('target_length', '1000')} words
+        - Cite sources within your response naturally
+        Please provide detailed, accurate information with proper structure."""
 
         # Conservative token limit
+        system_instruction = GeminiGroundingSearch._create_system_instruction(analysis)
         token_limit = 3000
         
         try:
@@ -753,7 +782,7 @@ COMPREHENSIVE ANALYSIS:
                         'primary_error': str(e),
                         'fallback_error': str(fallback_error)
                     }
-                }
+                }    
 
 
     @staticmethod
