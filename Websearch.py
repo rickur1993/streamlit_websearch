@@ -387,17 +387,19 @@ class GeminiGroundingSearch:
         Key findings with specific metrics and recent developments (2-3 sentences).
 
         ## Detailed Analysis
-        ### Primary Topic/Company Analysis
+        ### Primary Analysis
         - Current performance data with exact figures and percentages
         - Recent developments (last 6-12 months) with specific dates
         - Key growth drivers and strategic initiatives
         - Market position and competitive advantages
+        
 
         ## Key Metrics & Financial Data
         - Revenue figures, profit margins, growth rates with exact numbers
         - Stock performance data with percentage changes
         - Market capitalization and valuation metrics
         - Regulatory compliance and approval data
+        -Summary Table if applicable
 
         ## Recent Developments (2024-2025)
         - Latest regulatory changes with specific dates
