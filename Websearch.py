@@ -168,7 +168,7 @@ class GeminiGroundingSearch:
                 response="",
                 sources=[],
                 search_queries=[],
-                model="gemini-2.5-flash (Enhanced Chain Error)",
+                model="gemini-2.5-flash-lite (Enhanced Chain Error)",
                 timestamp=datetime.now().isoformat(),
                 response_time=time.time() - start_time,
                 error=str(e),
@@ -211,7 +211,7 @@ Provide structural analysis:"""
         try:
             config = types.GenerateContentConfig(
                 response_modalities=['TEXT'],
-                max_output_tokens=3000,
+                max_output_tokens=30000,
                 system_instruction="Analyze queries to determine optimal response structure and organization."
             )
             
@@ -644,7 +644,7 @@ COMPREHENSIVE ANALYSIS:
             
             # Use gemini-2.5-flash (not flash-lite) for grounding
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-2.5-flash-lite",
                 contents=content_prompt,
                 config=config
             )
@@ -1114,7 +1114,7 @@ COMPREHENSIVE ANALYSIS:
     
     @staticmethod
     def search_with_legacy_sdk(query: str) -> SearchResult:
-            """Optimized legacy SDK search with Gemini 2.5 Flash only"""
+            """Optimized legacy SDK search with Gemini 2.5 Flash-lite only"""
             start_time = time.time()
             try:
                 genai_old.configure(api_key=GEMINI_API_KEY)
@@ -2257,7 +2257,7 @@ def display_search_result(result: SearchResult):
 def main():
     # Header
     st.title("🔍 Advanced Web Search Comparison")
-    st.markdown("**Choose between Gemini 2.5 Flash, GPT-4o Responses API, or Azure AI Agents with Bing Search**")
+    st.markdown("**Choose between Gemini 2.5 Flash-lite, GPT-4o Responses API, or Azure AI Agents with Bing Search**")
 
     # Model Selection
     st.subheader("🤖 Select AI Model")
