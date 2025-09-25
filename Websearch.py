@@ -187,7 +187,7 @@ class GeminiGroundingSearch:
    - current_events: Breaking news, protests, political developments requiring timeline analysis
    - business_financial: Company analysis, market data, earnings requiring metrics and performance data
    - sports_news: Match updates, scores, player performance requiring current statistics
-   - technical_guide: Implementation, how-to, API documentation requiring step-by step guidance
+   - technical_guide: Implementation, how-to, API documentation requiring step-by-step guidance
    - general_comprehensive: Educational, informational topics requiring thorough coverage
 
 2. STRUCTURAL COMPLEXITY ASSESSMENT:
