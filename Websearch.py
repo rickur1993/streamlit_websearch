@@ -204,7 +204,7 @@ class GeminiGroundingSearch:
         2. Response Requirements:
         - brief: 200-400 words, focused updates
         - detailed: 600-1000 words, comprehensive coverage
-        - comprehensive: 1200-1800 words, full business intelligence
+        - comprehensive: 2000-6000 words, full business intelligence
 
         3. Structure Format:
         - executive_summary: Business format with sections
@@ -225,7 +225,7 @@ class GeminiGroundingSearch:
             try:
                 config = types.GenerateContentConfig(
                     response_modalities=['TEXT'],
-                    max_output_tokens=300,
+                    max_output_tokens=2000,
                     system_instruction="You are a query analysis expert. Provide precise, structured analysis for adaptive response generation. Be concise and specific."
                 )
                 
@@ -487,7 +487,7 @@ class GeminiGroundingSearch:
     Key findings with specific metrics and recent developments (2-3 sentences).
 
     ## Detailed Analysis
-    ### Primary Topic/Company Analysis
+    ### Primary Analysis
     - Current performance data with exact figures and percentages
     - Recent developments (last 6-12 months) with specific dates
     - Key growth drivers and strategic initiatives
@@ -498,6 +498,7 @@ class GeminiGroundingSearch:
     - Stock performance data with percentage changes
     - Market capitalization and valuation metrics
     - Regulatory compliance and approval data
+    -Summary Table if applicable
 
     ## Recent Developments (2024-2025)
     - Latest regulatory changes with specific dates
