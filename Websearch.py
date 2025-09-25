@@ -149,7 +149,7 @@ class GeminiGroundingSearch:
             )
             
             response_time = time.time() - start_time
-            model_used = "gemini-2.5-flash-lite (Enhanced Chain + Dynamic Headers)"
+            model_used = "gemini-2.5-flash (Enhanced Chain + Dynamic Headers)"
             
             return SearchResult(
                 success=True,
@@ -168,7 +168,7 @@ class GeminiGroundingSearch:
                 response="",
                 sources=[],
                 search_queries=[],
-                model="gemini-2.5-flash-lite (Enhanced Chain Error)",
+                model="gemini-2.5-flash (Enhanced Chain Error)",
                 timestamp=datetime.now().isoformat(),
                 response_time=time.time() - start_time,
                 error=str(e),
@@ -216,7 +216,7 @@ Provide structural analysis:"""
             )
             
             response = client.models.generate_content(
-                model="gemini-2.5-flash-lite",
+                model="gemini-2.5-flash",
                 contents=analysis_prompt,
                 config=config
             )
@@ -682,25 +682,25 @@ COMPREHENSIVE ANALYSIS:
     @staticmethod
     
     def _execute_enhanced_content_chain(client, query: str, analysis: Dict[str, str]) -> Dict[str, Any]:
-        """Execute enhanced content generation with comprehensive deduplication"""
+        """Execute enhanced content generation with FIXED grounding"""
         
-        # Generate dynamic structured prompt with anti-duplication measures
-        content_prompt = GeminiGroundingSearch._create_anti_duplication_prompt(query, analysis)
-        system_instruction = GeminiGroundingSearch._create_clean_citation_system_instruction(analysis)
+        # Generate simple, clean prompt
+        content_prompt = GeminiGroundingSearch._create_simple_grounding_prompt(query, analysis)
+        system_instruction = GeminiGroundingSearch._create_simple_system_instruction(analysis)
         
         # Calculate token limit
         target_length = analysis.get('target_length', '1000')
         try:
-            token_limit = int(target_length.replace('words', '').replace('~', '').strip()) + 300
-            token_limit = min(max(token_limit, 800), 2000)  # Reduced to prevent over-generation
+            token_limit = int(target_length.replace('words', '').replace('~', '').strip()) + 200
+            token_limit = min(max(token_limit, 800), 1800)  # Conservative limit
         except:
-            token_limit = 1500
+            token_limit = 1200
         
-        # Try grounding first, then fallback
+        # FIXED: Try grounding with correct configuration
         try:
-            print("Debug: Attempting grounding...")
+            print("Debug: Attempting grounding with correct configuration...")
             
-            # Setup grounding tool
+            # Use the CORRECT grounding tool configuration for Gemini 2.5
             grounding_tool = types.Tool(
                 google_search=types.GoogleSearch()
             )
@@ -710,73 +710,178 @@ COMPREHENSIVE ANALYSIS:
                 response_modalities=['TEXT'],
                 max_output_tokens=token_limit,
                 system_instruction=system_instruction,
-                temperature=0.05  # Very low temperature to reduce repetition
+                temperature=0.1  # Moderate temperature for better grounding
             )
             
+            print(f"Debug: Using model: gemini-2.5-flash (not flash-lite)")
+            print(f"Debug: Token limit: {token_limit}")
+            
+            # FIXED: Use supported model name
             response = client.models.generate_content(
-                model="gemini-2.5-flash-lite",
+                model="gemini-2.5-flash",  # Changed from flash-lite to flash
                 contents=content_prompt,
                 config=config
             )
             
-            # Extract response and sources
+            # Extract response and sources with minimal processing
             response_text = GeminiGroundingSearch._extract_response_text_simple(response)
-            sources = GeminiGroundingSearch._extract_sources_clean(response)
+            sources = GeminiGroundingSearch._extract_sources_simple(response)
             search_queries = GeminiGroundingSearch._extract_search_queries_simple(response)
             has_grounding = len(sources) > 0
             
-            print(f"Debug: Grounding successful - {len(sources)} sources found")
+            print(f"Debug: Grounding check - {len(sources)} sources, metadata present: {hasattr(response.candidates[0], 'grounding_metadata') if response.candidates else False}")
             
-            # Comprehensive deduplication and cleanup
-            processed_response = GeminiGroundingSearch._comprehensive_cleanup(response_text, analysis)
+            # MINIMAL cleanup to avoid corruption
+            cleaned_response = GeminiGroundingSearch._minimal_cleanup(response_text)
             
             return {
-                'response_text': processed_response,
+                'response_text': cleaned_response,
                 'sources': sources,
                 'search_queries': search_queries,
                 'has_grounding': has_grounding,
-                'analysis_used': analysis
+                'analysis_used': analysis,
+                'debug_info': {
+                    'model_used': 'gemini-2.5-flash',
+                    'token_limit': token_limit,
+                    'sources_count': len(sources),
+                    'has_metadata': hasattr(response.candidates[0], 'grounding_metadata') if response.candidates else False
+                }
             }
             
         except Exception as e:
-            print(f"Grounding failed: {e}")
-            print("Debug: Attempting fallback without grounding...")
+            print(f"Primary grounding failed: {e}")
+            print("Debug: Attempting fallback with flash...")
             
             try:
-                # Fallback without grounding
+                # Fallback to flash-lite without complex processing
                 fallback_config = types.GenerateContentConfig(
+                    tools=[grounding_tool],
                     response_modalities=['TEXT'],
                     max_output_tokens=token_limit,
-                    system_instruction=system_instruction + "\n\nProvide comprehensive response based on training data. Do NOT repeat sections.",
-                    temperature=0.1
+                    system_instruction=system_instruction + "\n\nProvide comprehensive response with real data.",
+                    temperature=0.2
                 )
                 
                 fallback_response = client.models.generate_content(
-                    model="gemini-2.5-flash-lite",
+                    model="gemini-2.5-flash",
                     contents=content_prompt,
                     config=fallback_config
                 )
                 
                 fallback_text = GeminiGroundingSearch._extract_response_text_simple(fallback_response)
-                processed_fallback = GeminiGroundingSearch._comprehensive_cleanup(fallback_text, analysis)
+                fallback_sources = GeminiGroundingSearch._extract_sources_simple(fallback_response)
+                fallback_queries = GeminiGroundingSearch._extract_search_queries_simple(fallback_response)
+                fallback_grounding = len(fallback_sources) > 0
+                
+                cleaned_fallback = GeminiGroundingSearch._minimal_cleanup(fallback_text)
                 
                 return {
-                    'response_text': processed_fallback + "\n\n*Note: Response generated without live search grounding.*",
-                    'sources': [],
-                    'search_queries': [],
-                    'has_grounding': False,
-                    'analysis_used': analysis
+                    'response_text': cleaned_fallback + ("\n\n*Note: Using fallback model.*" if not fallback_grounding else ""),
+                    'sources': fallback_sources,
+                    'search_queries': fallback_queries,
+                    'has_grounding': fallback_grounding,
+                    'analysis_used': analysis,
+                    'debug_info': {
+                        'model_used': 'gemini-2.5-flash (fallback)',
+                        'primary_error': str(e)
+                    }
                 }
                 
             except Exception as fallback_error:
-                print(f"Fallback error: {fallback_error}")
+                print(f"Fallback also failed: {fallback_error}")
                 return {
-                    'response_text': f"Error generating content. Primary: {str(e)} Fallback: {str(fallback_error)}",
+                    'response_text': f"Error: Primary grounding failed ({str(e)}), Fallback failed ({str(fallback_error)})",
                     'sources': [],
                     'search_queries': [],
                     'has_grounding': False,
-                    'analysis_used': analysis
+                    'analysis_used': analysis,
+                    'debug_info': {
+                        'primary_error': str(e),
+                        'fallback_error': str(fallback_error)
+                    }
                 }
+
+    @staticmethod
+    def _create_simple_grounding_prompt(query: str, analysis: Dict[str, str]) -> str:
+        """Create simple, clean prompt for grounding"""
+        
+        dynamic_headers = analysis.get('dynamic_headers', [])
+        target_length = analysis.get('target_length', '1000')
+        
+        # Simple header list
+        headers_list = ""
+        if dynamic_headers:
+            for header in dynamic_headers:
+                headers_list += f"- {header}\n"
+        
+        prompt = f"""Please provide comprehensive, current information about: "{query}"
+
+    Use Google Search to find the most recent 2024-2025 information.
+
+    Please organize your response with these sections:
+    {headers_list}
+
+    Requirements:
+    - Use real data from current sources
+    - Include specific figures, dates, and statistics
+    - Target length: approximately {target_length} words
+    - Professional business analysis format
+    - Cite sources naturally in your response
+
+    Provide detailed, accurate information with proper structure."""
+
+        return prompt
+
+    @staticmethod
+    def _create_simple_system_instruction(analysis: Dict[str, str]) -> str:
+        """Create simple system instruction for grounding"""
+        
+        return """You are a professional research analyst providing comprehensive business intelligence.
+
+    REQUIREMENTS:
+    - Use Google Search extensively for current, factual information
+    - Include specific data: exact figures, percentages, dates, company names
+    - Structure responses with clear numbered sections
+    - Provide authoritative, well-researched analysis
+    - Use proper formatting with headers and bullet points
+    - Cite information sources naturally within your response
+
+    Focus on accuracy, specificity, and professional presentation."""
+
+    @staticmethod
+    def _minimal_cleanup(response_text: str) -> str:
+        """Minimal cleanup to fix basic formatting without corruption"""
+        
+        if not response_text:
+            return response_text
+        
+        # Only fix obvious header formatting issues
+        lines = response_text.split('\n')
+        cleaned_lines = []
+        
+        for line in lines:
+            stripped = line.strip()
+            
+            # Only format obvious numbered headers
+            if stripped and len(stripped) < 100:  # Only short lines that could be headers
+                if any(stripped.startswith(f'{i}.') for i in range(1, 10)):
+                    if not stripped.startswith('##'):
+                        cleaned_lines.append(f"## {stripped}")
+                        continue
+            
+            cleaned_lines.append(line)
+        
+        # Join and do minimal spacing cleanup
+        result = '\n'.join(cleaned_lines)
+        result = result.replace('\n## ', '\n\n## ')
+        
+        # Remove excessive newlines only
+        while '\n\n\n' in result:
+            result = result.replace('\n\n\n', '\n\n')
+        
+        return result.strip()
+
+        
 
 
     @staticmethod
@@ -1025,7 +1130,7 @@ COMPREHENSIVE ANALYSIS:
     
     @staticmethod
     def search_with_legacy_sdk(query: str) -> SearchResult:
-            """Optimized legacy SDK search with Gemini 2.5 Flash-lite only"""
+            """Optimized legacy SDK search with Gemini 2.5 Flash only"""
             start_time = time.time()
             try:
                 genai_old.configure(api_key=GEMINI_API_KEY)
@@ -2168,7 +2273,7 @@ def display_search_result(result: SearchResult):
 def main():
     # Header
     st.title("🔍 Advanced Web Search Comparison")
-    st.markdown("**Choose between Gemini 2.5 Flash-lite, GPT-4o Responses API, or Azure AI Agents with Bing Search**")
+    st.markdown("**Choose between Gemini 2.5 Flash, GPT-4o Responses API, or Azure AI Agents with Bing Search**")
 
     # Model Selection
     st.subheader("🤖 Select AI Model")
