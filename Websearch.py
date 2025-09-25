@@ -593,7 +593,7 @@ COMPREHENSIVE ANALYSIS:
     - Focus on accuracy and professional presentation"""
 
         # Conservative token limit
-        token_limit = 50000
+        #token_limit = 50000
         
         try:
             print("Debug: Starting grounding attempt...")
@@ -605,7 +605,7 @@ COMPREHENSIVE ANALYSIS:
             
             config = types.GenerateContentConfig(
                 tools=[grounding_tool],
-                response_modalities=['TEXT']#,
+                response_modalities=['TEXT'],
                 #max_output_tokens=token_limit,
                 system_instruction=system_instruction,
                 temperature=0.1
@@ -707,7 +707,7 @@ COMPREHENSIVE ANALYSIS:
                 print("Debug: Trying fallback...")
                 
                 fallback_config = types.GenerateContentConfig(
-                    response_modalities=['TEXT']#,
+                    response_modalities=['TEXT'],
                     #max_output_tokens=token_limit,
                     system_instruction=system_instruction,
                     temperature=0.2
