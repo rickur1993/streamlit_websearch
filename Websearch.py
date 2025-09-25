@@ -160,7 +160,7 @@ class GeminiGroundingSearch:
                 )
                 
                 response_time = time.time() - start_time
-                model_used = "gemini-2.5-flash-lite (Chain Prompting)"
+                model_used = "gemini-2.5-flash (Chain Prompting)"
                 
                 return SearchResult(
                     success=True,
@@ -179,7 +179,7 @@ class GeminiGroundingSearch:
                     response="",
                     sources=[],
                     search_queries=[],
-                    model="gemini-2.5-flash-lite (Chain Error)",
+                    model="gemini-2.5-flash (Chain Error)",
                     timestamp=datetime.now().isoformat(),
                     response_time=time.time() - start_time,
                     error=str(e),
@@ -230,7 +230,7 @@ class GeminiGroundingSearch:
                 )
                 
                 response = client.models.generate_content(
-                    model="gemini-2.5-flash-lite",
+                    model="gemini-2.5-flash",
                     contents=analysis_prompt,
                     config=config
                 )
@@ -330,7 +330,7 @@ class GeminiGroundingSearch:
             try:
                 # Execute the content generation with grounding
                 response = client.models.generate_content(
-                    model="gemini-2.5-flash-lite",
+                    model="gemini-2.5-flash",
                     contents=content_prompt,
                     config=config
                 )
@@ -742,7 +742,7 @@ class GeminiGroundingSearch:
                 Please structure your response clearly with proper organization and cite your sources."""
                 
                 # Use only Gemini 2.5 Flash
-                model = genai_old.GenerativeModel("gemini-2.5-flash-lite")
+                model = genai_old.GenerativeModel("gemini-2.5-flash")
                 
                 # Try grounding first, fallback to basic
                 try:
@@ -751,14 +751,14 @@ class GeminiGroundingSearch:
                             prompt,
                             tools=[{'google_search_retrieval': {}}]
                         )
-                        model_used = "gemini-2.5-flash-lite (Legacy Grounding)"
+                        model_used = "gemini-2.5-flash (Legacy Grounding)"
                     else:
                         response = model.generate_content(prompt)
-                        model_used = "gemini-2.5-flash-lite (Legacy Basic)"
+                        model_used = "gemini-2.5-flash (Legacy Basic)"
                 except Exception:
                     # Fallback to basic
                     response = model.generate_content(prompt)
-                    model_used = "gemini-2.5-flash-lite (Legacy Basic)"
+                    model_used = "gemini-2.5-flash (Legacy Basic)"
 
                 response_time = time.time() - start_time
                 
@@ -792,7 +792,7 @@ class GeminiGroundingSearch:
                     response="",
                     sources=[],
                     search_queries=[],
-                    model="gemini-2.5-flash-lite (Legacy Error)",
+                    model="gemini-2.5-flash (Legacy Error)",
                     timestamp=datetime.now().isoformat(),
                     response_time=time.time() - start_time,
                     error=str(e),
@@ -1866,7 +1866,7 @@ def display_search_result(result: SearchResult):
 def main():
     # Header
     st.title("🔍 Advanced Web Search Comparison")
-    st.markdown("**Choose between Gemini 2.5 Flash-lite, GPT-4o Responses API, or Azure AI Agents with Bing Search**")
+    st.markdown("**Choose between Gemini 2.5 Flash, GPT-4o Responses API, or Azure AI Agents with Bing Search**")
     
     # Model Selection
     st.subheader("🤖 Select AI Model")
@@ -1878,7 +1878,7 @@ def main():
     
     options = []
     if gemini_available:
-        options.append("Gemini 2.5 Flash-lite with Google Search Grounding")
+        options.append("Gemini 2.5 Flash with Google Search Grounding")
     if openai_available:
         options.append("GPT-4o with Responses API Web Search")
     if azure_available:
