@@ -149,7 +149,7 @@ class GeminiGroundingSearch:
             )
             
             response_time = time.time() - start_time
-            model_used = "gemini-2.5-flash (Enhanced Chain + Dynamic Headers)"
+            model_used = "gemini-2.5-flash-lite (Enhanced Chain + Dynamic Headers)"
             
             return SearchResult(
                 success=True,
@@ -211,12 +211,12 @@ Provide structural analysis:"""
         try:
             config = types.GenerateContentConfig(
                 response_modalities=['TEXT'],
-                max_output_tokens=300,
+                max_output_tokens=3000,
                 system_instruction="Analyze queries to determine optimal response structure and organization."
             )
             
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-2.5-flash-lite",
                 contents=analysis_prompt,
                 config=config
             )
@@ -593,7 +593,7 @@ COMPREHENSIVE ANALYSIS:
     - Focus on accuracy and professional presentation"""
 
         # Conservative token limit
-        #token_limit = 50000
+        token_limit = 3000
         
         try:
             print("Debug: Starting grounding attempt...")
@@ -606,7 +606,7 @@ COMPREHENSIVE ANALYSIS:
             config = types.GenerateContentConfig(
                 tools=[grounding_tool],
                 response_modalities=['TEXT'],
-                #max_output_tokens=token_limit,
+                max_output_tokens=token_limit,
                 system_instruction=system_instruction,
                 temperature=0.1
             )
@@ -694,7 +694,7 @@ COMPREHENSIVE ANALYSIS:
                 'has_grounding': has_grounding,
                 'analysis_used': analysis,
                 'debug_info': {
-                    'model_used': 'gemini-2.5-flash',
+                    'model_used': 'gemini-2.5-flash-lite',
                     'grounding_status': 'success' if has_grounding else 'no_metadata'
                 }
             }
@@ -708,7 +708,7 @@ COMPREHENSIVE ANALYSIS:
                 
                 fallback_config = types.GenerateContentConfig(
                     response_modalities=['TEXT'],
-                    #max_output_tokens=token_limit,
+                    max_output_tokens=token_limit,
                     system_instruction=system_instruction,
                     temperature=0.2
                 )
