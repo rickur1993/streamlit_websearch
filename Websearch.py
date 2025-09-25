@@ -409,7 +409,315 @@ class GeminiGroundingSearch:
         - Investment considerations and recommendations
         </response_structure>
 
-        Provide current, comprehensive business intelligence analysis with extensive search grounding:"""        
+        Provide current, comprehensive business intelligence analysis with extensive search grounding:"""  
+    @staticmethod
+    def _create_adaptive_system_instruction(analysis: Dict[str, str]) -> str:
+        """Generate system instruction based on analysis"""
+        
+        base_instruction = """You MUST use Google Search grounding extensively for current information.
+
+    CRITICAL SEARCH BEHAVIOR:
+    - Always perform multiple Google searches for comprehensive coverage
+    - Prioritize 2024-2025 specific data and recent developments  
+    - Cross-verify information from multiple authoritative sources
+    - Structure responses according to the provided template"""
+
+        query_type = analysis.get('query_type', 'general_info')
+        
+        if query_type == 'business_financial':
+            return f"""{base_instruction}
+
+    BUSINESS INTELLIGENCE FOCUS:
+    - Emphasize quantitative financial data and specific metrics
+    - Include regulatory and compliance information for Indian context
+    - Use authoritative financial, pharmaceutical, and market sources
+    - Provide detailed analysis with supporting evidence
+    - Include exact figures, percentages, and dates throughout"""
+
+        elif query_type == 'sports_news':
+            return f"""{base_instruction}
+
+    SPORTS/NEWS FOCUS:
+    - Prioritize real-time updates and current developments
+    - Include specific dates, scores, statistics, and recent events
+    - Use credible news and sports sources
+    - Keep information factual, timely, and engaging
+    - Focus on recent match results and player performances"""
+
+        elif query_type == 'technical':
+            return f"""{base_instruction}
+
+    TECHNICAL FOCUS:
+    - Provide practical implementation guidance and examples
+    - Include step-by-step instructions and best practices
+    - Use authoritative technical documentation and sources
+    - Focus on actionable solutions and current industry standards"""
+
+        else:  # general_info
+            return f"""{base_instruction}
+
+    GENERAL INFORMATION FOCUS:
+    - Provide balanced, well-researched information
+    - Include relevant context and supporting examples
+    - Use authoritative and credible sources across domains
+    - Structure information clearly and logically"""
+
+    @staticmethod
+    def _create_adaptive_prompt(query: str, analysis: Dict[str, str]) -> str:
+        """Generate content prompt adapted to query analysis"""
+        
+        query_type = analysis.get('query_type', 'general_info')
+        structure_format = analysis.get('structure_format', 'mixed')
+        key_focus = analysis.get('key_focus', 'comprehensive information')
+        
+        if query_type == 'business_financial' and structure_format == 'executive_summary':
+            return f"""Provide comprehensive business intelligence analysis for: "{query}"
+
+    <requirements>
+    - Use Google Search extensively for current 2024-2025 financial and market data
+    - Include specific metrics, percentages, dates, and quantitative analysis
+    - Focus on {key_focus}
+    - Prioritize Indian market context and regulatory environment when applicable
+    </requirements>
+
+    <response_structure>
+    ## Executive Summary
+    Key findings with specific metrics and recent developments (2-3 sentences).
+
+    ## Detailed Analysis
+    ### Primary Topic/Company Analysis
+    - Current performance data with exact figures and percentages
+    - Recent developments (last 6-12 months) with specific dates
+    - Key growth drivers and strategic initiatives
+    - Market position and competitive advantages
+
+    ## Key Metrics & Financial Data
+    - Revenue figures, profit margins, growth rates with exact numbers
+    - Stock performance data with percentage changes
+    - Market capitalization and valuation metrics
+    - Regulatory compliance and approval data
+
+    ## Recent Developments (2024-2025)
+    - Latest regulatory changes with specific dates
+    - New product launches, acquisitions, partnerships
+    - Market trends and industry shifts
+
+    ## Strategic Outlook & Implications
+    - Forward-looking analysis and growth projections
+    - Investment considerations and recommendations
+    </response_structure>
+
+    Provide current, comprehensive business intelligence analysis."""
+
+        elif query_type == 'sports_news':
+            return f"""Provide current sports/news information about: "{query}"
+
+    <requirements>
+    - Use Google Search for the latest 2024-2025 updates and developments
+    - Include specific details, dates, scores, and recent match information
+    - Focus on {key_focus}
+    - Use credible sports news sources
+    </requirements>
+
+    <response_structure>
+    ## Current Status
+    Latest developments with specific dates and key details.
+
+    ## Key Details & Statistics
+    - Match scores, player performances, team standings
+    - Important statistics and records
+    - Recent form and performance analysis
+
+    ## Recent Updates & Timeline
+    - Timeline of recent events and changes
+    - Upcoming fixtures and important dates
+    </response_structure>
+
+    Keep response focused and engaging. Target 250-400 words unless more detail needed."""
+
+        elif query_type == 'technical':
+            return f"""Provide technical information and guidance for: "{query}"
+
+    <requirements>
+    - Use Google Search for current technical documentation and best practices
+    - Include practical implementation details and examples
+    - Focus on {key_focus}
+    - Prioritize recent 2024-2025 updates and industry standards
+    </requirements>
+
+    <response_structure>
+    ## Technical Overview
+    Clear explanation of the concept or solution.
+
+    ## Implementation Details
+    - Step-by-step approach and methodology
+    - Code examples or configuration details where applicable
+    - Requirements and prerequisites
+
+    ## Best Practices & Considerations
+    - Performance optimization recommendations
+    - Common pitfalls to avoid
+    - Industry standards and recent updates
+    </response_structure>
+
+    Provide actionable technical guidance with current information."""
+
+        else:  # general_info
+            return f"""Provide comprehensive information about: "{query}"
+
+    <requirements>
+    - Use Google Search for current and accurate information
+    - Include relevant examples, context, and supporting details
+    - Focus on {key_focus}
+    - Structure information clearly and logically
+    </requirements>
+
+    <response_structure>  
+    ## Overview
+    Direct answer to the main question with key points.
+
+    ## Key Information
+    Important details, facts, and supporting context.
+
+    ## Additional Context
+    Related information and recent developments if applicable.
+    </response_structure>
+
+    Provide well-researched, clearly structured information."""
+
+    @staticmethod
+    def _get_adaptive_token_limit(analysis: Dict[str, str]) -> int:
+        """Set token limits based on response requirements"""
+        
+        response_depth = analysis.get('response_depth', 'detailed')
+        query_type = analysis.get('query_type', 'general_info')
+        
+        if response_depth == 'comprehensive' or query_type == 'business_financial':
+            return 1500
+        elif response_depth == 'brief' or query_type == 'sports_news':
+            return 800
+        else:
+            return 1000
+
+    @staticmethod
+    def _extract_response_text(response) -> str:
+        """Extract response text from Gemini response object"""
+        
+        if hasattr(response, 'text'):
+            return response.text
+        elif response.candidates and response.candidates[0].content.parts:
+            return ''.join([
+                part.text for part in response.candidates[0].content.parts 
+                if hasattr(part, 'text')
+            ])
+        else:
+            return "No response text generated"
+
+    @staticmethod
+    def _extract_sources_with_quality_filter(response) -> List[Dict[str, str]]:
+        """Extract and filter sources from grounded response - reuses existing logic"""
+        
+        sources = []
+        try:
+            if (response.candidates and 
+                hasattr(response.candidates[0], 'grounding_metadata')):
+                
+                metadata = response.candidates[0].grounding_metadata
+                
+                if hasattr(metadata, 'grounding_chunks'):
+                    source_to_chunks = {}
+                    unique_sources_count = 0
+                    
+                    for chunk in metadata.grounding_chunks:
+                        if (hasattr(chunk, 'web') and chunk.web and chunk.web.uri and 
+                            unique_sources_count < 10):
+                            
+                            uri = chunk.web.uri
+                            title = getattr(chunk.web, 'title', 'Unknown')
+                            
+                            # Check if it's a quality source using existing method
+                            is_quality = GeminiGroundingSearch._is_quality_source(uri, title)
+                            
+                            if uri not in source_to_chunks:
+                                source_to_chunks[uri] = {
+                                    'title': title,
+                                    'uri': uri,
+                                    'is_quality': is_quality
+                                }
+                                unique_sources_count += 1
+                    
+                    # Sort sources by quality first
+                    quality_sources = [s for s in source_to_chunks.values() if s['is_quality']]
+                    other_sources = [s for s in source_to_chunks.values() if not s['is_quality']]
+                    
+                    # Prioritize quality sources
+                    all_sources = quality_sources + other_sources[:10-len(quality_sources)]
+                    
+                    for source_data in all_sources:
+                        sources.append({
+                            'title': source_data['title'],
+                            'uri': source_data['uri']
+                        })
+                    
+                    print(f"Debug: Quality sources: {len(quality_sources)}/{len(source_to_chunks)}")
+                            
+        except Exception as e:
+            print(f"Source extraction error: {e}")
+        
+        return sources
+
+    @staticmethod
+    def _extract_search_queries(response) -> List[str]:
+        """Extract search queries from grounded response"""
+        
+        search_queries = []
+        try:
+            if (response.candidates and 
+                hasattr(response.candidates[0], 'grounding_metadata')):
+                
+                metadata = response.candidates[0].grounding_metadata
+                
+                if hasattr(metadata, 'web_search_queries'):
+                    search_queries = list(metadata.web_search_queries)
+                            
+        except Exception as e:
+            print(f"Search query extraction error: {e}")
+        
+        return search_queries
+
+    @staticmethod
+    def _post_process_adaptive_response(response_text: str, analysis: Dict[str, str]) -> str:
+        """Enhanced post-processing based on query analysis"""
+        
+        if not response_text:
+            return response_text
+        
+        query_type = analysis.get('query_type', 'general_info')
+        structure_format = analysis.get('structure_format', 'mixed')
+        
+        # Apply existing post-processing for business queries
+        if query_type == 'business_financial' and structure_format == 'executive_summary':
+            if "## Executive Summary" not in response_text:
+                lines = response_text.split('\n')
+                if len(lines) > 2:
+                    structured_response = f"## Executive Summary\n\n{lines[0]}\n\n## Detailed Analysis\n\n"
+                    structured_response += '\n'.join(lines[1:])
+                    return structured_response
+        
+        # For sports/news, ensure concise format
+        elif query_type == 'sports_news':
+            if len(response_text) > 1000 and "##" not in response_text:
+                lines = response_text.split('\n')
+                if len(lines) > 3:
+                    structured_response = f"## Current Status\n\n{lines[0]}\n\n## Key Details\n\n"
+                    structured_response += '\n'.join(lines[1:3])
+                    if len(lines) > 3:
+                        structured_response += f"\n\n## Recent Updates\n\n"
+                        structured_response += '\n'.join(lines[3:])
+                    return structured_response
+        
+        return response_text
+      
     
     @staticmethod
     def search_with_legacy_sdk(query: str) -> SearchResult:
