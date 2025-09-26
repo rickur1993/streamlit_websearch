@@ -87,36 +87,46 @@ STANDARD_SYSTEM_PROMPT = """You are a helpful assistant with access to current w
 
 
 
+
+
 class GeminiGroundingSearch:
     """
-    Minimal Gemini grounding search using Google Search tool, with simple output formatting.
-    Uses Gemini 2.5 Pro (Flash/Pro) and Google Search grounding if available.
-    Inline citations are directly inserted where Gemini 2.5 returns them.
-    No header generation, no complex formatting, pure Gemini inline result.
+    Minimal Gemini grounding search using Google Search tool, matching dictionary output requirements.
+    Designed for Streamlit integration with result keys:
+    success, response, sources, searchqueries, model, timestamp, responsetime, error, hasgrounding
     """
-
     @staticmethod
-    def search(query: str) -> Dict[str, Any]:
-        import os
+    def search(query: str) -> dict:
+        start_time = time.time()
+        # Default empty result structure
+        result = {
+            "success": False,
+            "response": "",
+            "sources": [],
+            "searchqueries": [],
+            "model": "gemini-2.5-pro with Google Search",
+            "timestamp": datetime.now().isoformat(),
+            "responsetime": 0.0,
+            "error": "",
+            "hasgrounding": False,
+        }
+
         try:
-            # Try to use new Gemini SDK first
             from google import genai
             api_key = os.getenv("GEMINIAPIKEY")
             if not api_key:
-                raise ValueError("Gemini API key missing. Set environment variable GEMINIAPIKEY.")
+                result["error"] = "Gemini API key missing. Set environment variable GEMINIAPIKEY."
+                return result
 
-            client = genai.Client(api_key=api_key)
-
+            client = genai.Client(api_key=GEMINI_API_KEY)
             prompt = (
                 f"Search the web for current information on '{query}'. "
-                "Provide a clear, concise answer. "
-                "Whenever you use facts or data from the web, insert inline citations as [source] right after each claim. "
-                "Do not use numbered headers, bullet points, or special formatting. Reply as a readable paragraph."
+                "Provide a clear, concise answer with inline citations as [source] after each claim."
+                "Reply as a paragraph only, no bullet points or headers."
             )
-
             config = genai.types.GenerateContentConfig(
                 response_modalities=["TEXT"],
-                max_output_tokens=4000,
+                max_output_tokens=30000,
                 tools=["google_search_retrieval"],
             )
 
@@ -126,27 +136,34 @@ class GeminiGroundingSearch:
                 config=config
             )
 
-            # Direct output - Gemini typically returns markdown-formatted output with [source]
-            output_text = response.text if hasattr(response, "text") else str(response)
-            return {
-                "success": True,
-                "response": output_text,
-                "sources": None,  # Inline citations, not extracted
-                "model": "gemini-2.5-pro with Google Search",
-            }
+            # Response text
+            text_response = response.text if hasattr(response, "text") else str(response)
+            result["success"] = True
+            result["response"] = text_response
+
+            # Extract grounding status and, if available, sources and web queries
+            if hasattr(response, "candidates") and hasattr(response.candidates[0], "grounding_metadata"):
+                grounding_metadata = response.candidates[0].grounding_metadata
+                result["hasgrounding"] = bool(getattr(grounding_metadata, "grounding_chunks", None))
+                # Sources extraction: get URLs and titles only for display
+                result["sources"] = [
+                    {"title": getattr(chunk.web, "title", "Unknown"), "uri": chunk.web.uri}
+                    for chunk in grounding_metadata.grounding_chunks if hasattr(chunk, "web")
+                ]
+                # Queries extraction if available
+                result["searchqueries"] = list(getattr(grounding_metadata, "web_search_queries", []))
+
+            result["responsetime"] = time.time() - start_time
+            result["timestamp"] = datetime.now().isoformat()
+            return result
 
         except ImportError:
-            return {
-                "success": False,
-                "error": "Gemini SDK not installed. Please install google-genai.",
-                "model": None,
-            }
+            result["error"] = "Gemini SDK not installed. Please install google-genai."
+            return result
         except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "model": None,
-            }
+            result["error"] = str(e)
+            return result
+
 
 
 class GPTResponsesSearch:
@@ -1074,7 +1091,7 @@ def add_citations_to_text(response_result: SearchResult) -> str:
 
 def display_search_result(result: SearchResult):
     """Display search results with proper grounding information"""
-    if result["success"]:
+    if result.success:
         # Success header with metrics
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -1334,7 +1351,7 @@ def main():
         display_search_result(result)
         
         # Save to history
-        if save_history and result["success"]:
+        if save_history and result.success:
             if 'search_history' not in st.session_state:
                 st.session_state.search_history = []
             
