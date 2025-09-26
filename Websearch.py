@@ -122,10 +122,17 @@ class GeminiGroundingSearch:
             #         has_grounding=False
             #     )
 
-            from google import genai
-            
-            client = genai.Client(api_key=GEMINI_API_KEY)
-            
+            import streamlit as st
+
+            try:
+                from google import genai
+                GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+                client = genai.Client(api_key=GEMINI_API_KEY)
+                models = client.models.list()
+                st.success("✅ Gemini API key is valid. Models available:")
+                st.write(models)
+            except Exception as e:
+                st.error(f"❌ Gemini API key test failed: {e}")
             # Enhanced prompt for better search results
             prompt = (
                 f"Search web for current information about: '{query}'. "
