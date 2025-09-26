@@ -84,87 +84,209 @@ class SearchResult:
 # Standard system prompt for consistency
 STANDARD_SYSTEM_PROMPT = """You are a helpful assistant with access to current web information. Always provide accurate, up-to-date information with proper citations when available."""
 
-
-
-
-
-
 class GeminiGroundingSearch:
     """
-    Minimal Gemini grounding search using Google Search tool, matching dictionary output requirements.
-    Designed for Streamlit integration with result keys:
-    success, response, sources, searchqueries, model, timestamp, responsetime, error, hasgrounding
+    Gemini grounding search using Google Search tool, returning SearchResult object.
+    Fixed to return SearchResult object instead of dictionary to prevent AttributeError.
     """
     @staticmethod
-    def search(query: str) -> dict:
+    def search(query: str) -> SearchResult:
         start_time = time.time()
-        # Default empty result structure
-        result = {
-            "success": False,
-            "response": "",
-            "sources": [],
-            "searchqueries": [],
-            "model": "gemini-2.5-pro with Google Search",
-            "timestamp": datetime.now().isoformat(),
-            "responsetime": 0.0,
-            "error": "",
-            "hasgrounding": False,
-        }
-
+        
         try:
-            from google import genai
-            api_key = os.getenv("GEMINIAPIKEY")
-            if not api_key:
-                result["error"] = "Gemini API key missing. Set environment variable GEMINIAPIKEY."
-                return result
+            # Check if new SDK is available
+            if not NEW_SDK_AVAILABLE:
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=[],
+                    model="Gemini SDK Not Available",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=time.time() - start_time,
+                    error="Google GenAI SDK not available. Please install: pip install google-genai",
+                    has_grounding=False
+                )
+            
+            # Check for API key
+            if not GEMINI_API_KEY or GEMINI_API_KEY == "your-gemini-api-key-here":
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=[],
+                    model="Gemini API Key Missing",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=time.time() - start_time,
+                    error="Gemini API key missing or not configured in Streamlit secrets.",
+                    has_grounding=False
+                )
 
+            from google import genai
+            
             client = genai.Client(api_key=GEMINI_API_KEY)
+            
+            # Enhanced prompt for better search results
             prompt = (
-                f"Search the web for current information on '{query}'. "
-                "Provide a clear, concise answer with inline citations as [source] after each claim."
-                "Reply as a paragraph only, no bullet points or headers."
+                f"Search the web for current information about: '{query}'. "
+                f"Provide a comprehensive, detailed response with current data and recent developments. "
+                f"Include specific facts, figures, dates, and quantitative information. "
+                f"Structure your response clearly and cite your sources. "
+                f"Focus on the most recent information available (prioritize 2024-2025 data). "
+                f"User location: India - include relevant local context when applicable."
             )
+            
             config = genai.types.GenerateContentConfig(
                 response_modalities=["TEXT"],
                 max_output_tokens=30000,
                 tools=["google_search_retrieval"],
+                temperature=0.1  # Lower temperature for more factual responses
             )
 
             response = client.models.generate_content(
-                model="gemini-2.5-pro",
+                model="gemini-2.5-flash",  # Using 2.5 Flash instead of Pro for better availability
                 contents=prompt,
                 config=config
             )
 
-            # Response text
-            text_response = response.text if hasattr(response, "text") else str(response)
-            result["success"] = True
-            result["response"] = text_response
+            response_time = time.time() - start_time
 
-            # Extract grounding status and, if available, sources and web queries
-            if hasattr(response, "candidates") and hasattr(response.candidates[0], "grounding_metadata"):
-                grounding_metadata = response.candidates[0].grounding_metadata
-                result["hasgrounding"] = bool(getattr(grounding_metadata, "grounding_chunks", None))
-                # Sources extraction: get URLs and titles only for display
-                result["sources"] = [
-                    {"title": getattr(chunk.web, "title", "Unknown"), "uri": chunk.web.uri}
-                    for chunk in grounding_metadata.grounding_chunks if hasattr(chunk, "web")
+            # Extract response text
+            response_text = ""
+            if hasattr(response, "text") and response.text:
+                response_text = response.text
+            elif hasattr(response, "candidates") and response.candidates:
+                # Try to get text from candidates
+                for candidate in response.candidates:
+                    if hasattr(candidate, "content") and candidate.content:
+                        if hasattr(candidate.content, "parts"):
+                            for part in candidate.content.parts:
+                                if hasattr(part, "text") and part.text:
+                                    response_text += part.text
+            else:
+                response_text = str(response)
+
+            # Initialize result variables
+            sources = []
+            search_queries = [query]
+            has_grounding = False
+
+            # Extract grounding information
+            try:
+                if (hasattr(response, "candidates") and 
+                    response.candidates and 
+                    hasattr(response.candidates[0], "grounding_metadata")):
+                    
+                    grounding_metadata = response.candidates[0].grounding_metadata
+                    
+                    # Check if we have grounding chunks
+                    if hasattr(grounding_metadata, "grounding_chunks") and grounding_metadata.grounding_chunks:
+                        has_grounding = True
+                        
+                        # Extract sources from grounding chunks
+                        for chunk in grounding_metadata.grounding_chunks:
+                            if hasattr(chunk, "web") and chunk.web:
+                                title = getattr(chunk.web, "title", "Web Source")
+                                uri = getattr(chunk.web, "uri", "")
+                                
+                                if uri:  # Only add if we have a valid URI
+                                    sources.append({
+                                        "title": title[:100],  # Truncate long titles
+                                        "uri": uri
+                                    })
+                    
+                    # Extract search queries used
+                    if hasattr(grounding_metadata, "web_search_queries"):
+                        web_queries = list(grounding_metadata.web_search_queries)
+                        if web_queries:
+                            search_queries.extend(web_queries)
+
+            except Exception as grounding_error:
+                print(f"Error extracting grounding metadata: {grounding_error}")
+                # Continue without grounding info
+
+            # Heuristic check for grounding if metadata extraction failed
+            if not has_grounding and response_text:
+                grounding_indicators = [
+                    "according to", "based on recent", "current information",
+                    "latest", "recent reports", "sources indicate", "web search shows",
+                    "recent data", "current data", "search results", "found information"
                 ]
-                # Queries extraction if available
-                result["searchqueries"] = list(getattr(grounding_metadata, "web_search_queries", []))
+                
+                response_lower = response_text.lower()
+                if any(indicator in response_lower for indicator in grounding_indicators):
+                    has_grounding = True
 
-            result["responsetime"] = time.time() - start_time
-            result["timestamp"] = datetime.now().isoformat()
-            return result
+            # Ensure we have a meaningful response
+            if not response_text.strip():
+                return SearchResult(
+                    success=False,
+                    response="",
+                    sources=[],
+                    search_queries=search_queries,
+                    model="gemini-2.5-flash with Google Search",
+                    timestamp=datetime.now().isoformat(),
+                    response_time=response_time,
+                    error="No response generated by Gemini model",
+                    has_grounding=False
+                )
+
+            # Remove duplicates from sources (keep unique URIs)
+            unique_sources = []
+            seen_uris = set()
+            for source in sources:
+                if source["uri"] not in seen_uris:
+                    unique_sources.append(source)
+                    seen_uris.add(source["uri"])
+
+            return SearchResult(
+                success=True,
+                response=response_text.strip(),
+                sources=unique_sources[:10],  # Limit to 10 sources max
+                search_queries=list(set(search_queries)),  # Remove duplicates
+                model="gemini-2.5-flash with Google Search",
+                timestamp=datetime.now().isoformat(),
+                response_time=response_time,
+                has_grounding=has_grounding
+            )
 
         except ImportError:
-            result["error"] = "Gemini SDK not installed. Please install google-genai."
-            return result
+            return SearchResult(
+                success=False,
+                response="",
+                sources=[],
+                search_queries=[],
+                model="Import Error",
+                timestamp=datetime.now().isoformat(),
+                response_time=time.time() - start_time,
+                error="Google GenAI SDK not installed. Please install: pip install google-genai",
+                has_grounding=False
+            )
+            
         except Exception as e:
-            result["error"] = str(e)
-            return result
-
-
+            error_message = str(e)
+            
+            # Provide more specific error messages
+            if "API_KEY" in error_message.upper() or "INVALID" in error_message.upper():
+                error_message = "Invalid API key. Please check your Gemini API key configuration."
+            elif "PERMISSION" in error_message.upper() or "FORBIDDEN" in error_message.upper():
+                error_message = "Permission denied. Please check if your API key has the required permissions."
+            elif "QUOTA" in error_message.upper() or "LIMIT" in error_message.upper():
+                error_message = "API quota exceeded. Please check your usage limits."
+            elif "NETWORK" in error_message.upper() or "CONNECTION" in error_message.upper():
+                error_message = "Network error. Please check your internet connection."
+            
+            return SearchResult(
+                success=False,
+                response="",
+                sources=[],
+                search_queries=[query],
+                model="gemini-2.5-flash (Error)",
+                timestamp=datetime.now().isoformat(),
+                response_time=time.time() - start_time,
+                error=error_message,
+                has_grounding=False
+            )
 
 class GPTResponsesSearch:
     """Handles GPT-4o with OpenAI Responses API for web search"""
