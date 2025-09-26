@@ -131,7 +131,7 @@ class GeminiGroundingSearch:
                 models = client.models.list()
                 model_names = [model.name for model in models]
                 st.success("✅ Gemini API key is valid. Models available:")
-                st.write(model_names)
+                st.write("Gemini API Key:", st.secrets["GEMINI_API_KEY"])
             except Exception as e:
                 st.error(f"❌ Gemini API key test failed: {e}")
             # Enhanced prompt for better search results
