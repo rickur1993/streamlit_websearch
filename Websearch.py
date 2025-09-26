@@ -149,7 +149,7 @@ class GeminiGroundingSearch:
             )
             
             response_time = time.time() - start_time
-            model_used = "gemini-2.5-flash (Enhanced Chain + Dynamic Headers)"
+            model_used = "gemini-2.5-flash-lite (Enhanced Chain + Dynamic Headers)"
             
             return SearchResult(
                 success=True,
@@ -216,7 +216,7 @@ Provide structural analysis:"""
             )
             
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-2.5-flash-lite",
                 contents=analysis_prompt,
                 config=config
             )
@@ -692,9 +692,9 @@ COMPREHENSIVE ANALYSIS:
             
             print("Debug: Making API call...")
             
-            # Use gemini-2.5-flash (not flash-lite) for grounding
+            # Use gemini-2.5-flash-lite for grounding
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-2.5-flash-lite",
                 contents=content_prompt,
                 config=config
             )
@@ -773,7 +773,7 @@ COMPREHENSIVE ANALYSIS:
                 'has_grounding': has_grounding,
                 'analysis_used': analysis,
                 'debug_info': {
-                    'model_used': 'gemini-2.5-flash',
+                    'model_used': 'gemini-2.5-flash-lite',
                     'grounding_status': 'success' if has_grounding else 'no_metadata'
                 }
             }
