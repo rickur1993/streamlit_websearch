@@ -109,18 +109,18 @@ class GeminiGroundingSearch:
                 )
             
             # Check for API key - use the global variable that's loaded from Streamlit secrets
-            if not GEMINI_API_KEY or GEMINI_API_KEY == "your-gemini-api-key-here":
-                return SearchResult(
-                    success=False,
-                    response="",
-                    sources=[],
-                    search_queries=[],
-                    model="Gemini API Key Missing",
-                    timestamp=datetime.now().isoformat(),
-                    response_time=time.time() - start_time,
-                    error="Gemini API key missing or not configured in Streamlit secrets. Please add GEMINI_API_KEY to your Streamlit secrets.",
-                    has_grounding=False
-                )
+            # if not GEMINI_API_KEY or GEMINI_API_KEY == "your-gemini-api-key-here":
+            #     return SearchResult(
+            #         success=False,
+            #         response="",
+            #         sources=[],
+            #         search_queries=[],
+            #         model="Gemini API Key Missing",
+            #         timestamp=datetime.now().isoformat(),
+            #         response_time=time.time() - start_time,
+            #         error="Gemini API key missing or not configured in Streamlit secrets. Please add GEMINI_API_KEY to your Streamlit secrets.",
+            #         has_grounding=False
+            #     )
 
             from google import genai
             
