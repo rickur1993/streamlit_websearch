@@ -12,7 +12,7 @@ import requests
 import subprocess
 
 
-# API Keys from Streamlit secrets
+# API Keys from Streamlit 
 #GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 #OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 #AZURE_AI_FOUNDRY_ENDPOINT = st.secrets["AZURE_AI_FOUNDRY_ENDPOINT"]
@@ -57,7 +57,7 @@ try:
 except ImportError:
     AZURE_OPENAI_AVAILABLE = False
 
-print(f"OpenAI Available: {OPENAI_AVAILABLE}")
+print(f"OpenAI vailable: {OPENAI_AVAILABLE}")
 print(f"Azure OpenAI Available: {AZURE_OPENAI_AVAILABLE}")
 
 # Page configuration
