@@ -129,8 +129,9 @@ class GeminiGroundingSearch:
                 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
                 client = genai.Client(api_key=GEMINI_API_KEY)
                 models = client.models.list()
+                model_names = [model.name for model in models]
                 st.success("✅ Gemini API key is valid. Models available:")
-                st.write(models)
+                st.write(model_names)
             except Exception as e:
                 st.error(f"❌ Gemini API key test failed: {e}")
             # Enhanced prompt for better search results
