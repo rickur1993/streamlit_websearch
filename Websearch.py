@@ -122,13 +122,13 @@ class GeminiGroundingSearch:
             #         has_grounding=False
             #     )
 
-            #from google import genai
+            from google import genai
             
             client = genai.Client(api_key=GEMINI_API_KEY)
             
             # Enhanced prompt for better search results
             prompt = (
-                f"Search the web for current information about: '{query}'. "
+                f"Search web for current information about: '{query}'. "
                 f"Provide a comprehensive, detailed response with current data and recent developments. "
                 f"Include specific facts, figures, dates, and quantitative information. "
                 f"Structure your response clearly and cite your sources. "
