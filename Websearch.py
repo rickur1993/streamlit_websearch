@@ -1476,10 +1476,10 @@ def main():
             with st.spinner(f"🔍 Searching with Azure AI Agents..."):
                 result = AzureAIAgentsSearch.search(search_query)
                 
-        wrapped_result = AttrDict(result)
-        display_search_result(wrapped_result)
+        
+        
 
-        st.divider()
+        #st.divider()
         display_search_result(result)
         
         # Save to history
