@@ -139,7 +139,7 @@ class GeminiGroundingSearch:
             config = genai.types.GenerateContentConfig(
                 response_modalities=["TEXT"],
                 max_output_tokens=30000,
-                tools=["google_search_retrieval"],
+                tools=[genai.types.Tool(google_search_retrieval=genai.types.GoogleSearchRetrieval())], # Proper format
                 temperature=0.1  # Lower temperature for more factual responses
             )
 
