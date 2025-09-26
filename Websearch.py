@@ -1230,15 +1230,8 @@ def main():
     )
     
     # Show model status
-    if "Gemini" in selected_model:
-        sdk_info, sdk_type, has_support = GeminiGroundingSearch.get_sdk_info()
-        if NEW_SDK_AVAILABLE:
-            st.success(f"✅ {sdk_info} - Full grounding support enabled")
-        elif OLD_SDK_AVAILABLE and has_support:
-            st.warning(f"⚠️ {sdk_info} - Limited grounding support")
-        else:
-            st.error(f"❌ {sdk_info}")
-    elif "Responses API" in selected_model:
+    
+    if "Responses API" in selected_model:
         if openai_available:
             st.success("✅ OpenAI SDK available - GPT-4o with web search enabled")
         else:
