@@ -87,7 +87,7 @@ STANDARD_SYSTEM_PROMPT = """You are a helpful assistant with access to current w
 
 
 
-class GeminiGroundingSearchSimple:
+class GeminiGroundingSearch:
     """
     Minimal Gemini grounding search using Google Search tool, with simple output formatting.
     Uses Gemini 2.5 Pro (Flash/Pro) and Google Search grounding if available.
