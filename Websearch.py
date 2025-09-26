@@ -108,7 +108,7 @@ class GeminiGroundingSearch:
                     has_grounding=False
                 )
             
-            # Check for API key
+            # Check for API key - use the global variable that's loaded from Streamlit secrets
             if not GEMINI_API_KEY or GEMINI_API_KEY == "your-gemini-api-key-here":
                 return SearchResult(
                     success=False,
@@ -118,7 +118,7 @@ class GeminiGroundingSearch:
                     model="Gemini API Key Missing",
                     timestamp=datetime.now().isoformat(),
                     response_time=time.time() - start_time,
-                    error="Gemini API key missing or not configured in Streamlit secrets.",
+                    error="Gemini API key missing or not configured in Streamlit secrets. Please add GEMINI_API_KEY to your Streamlit secrets.",
                     has_grounding=False
                 )
 
@@ -287,7 +287,6 @@ class GeminiGroundingSearch:
                 error=error_message,
                 has_grounding=False
             )
-
 class GPTResponsesSearch:
     """Handles GPT-4o with OpenAI Responses API for web search"""
     
