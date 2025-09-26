@@ -13,7 +13,7 @@ import subprocess
 
 
 # API Keys from Streamlit secrets
-GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+#GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
 AZURE_AI_FOUNDRY_ENDPOINT = st.secrets["AZURE_AI_FOUNDRY_ENDPOINT"]
 AZURE_AI_FOUNDRY_KEY = st.secrets["AZURE_AI_FOUNDRY_KEY"]
