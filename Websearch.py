@@ -144,7 +144,7 @@ class GeminiGroundingSearch:
             )
 
             response = client.models.generate_content(
-                model="gemini-2.5-flash",  # Using 2.5 Flash instead of Pro for better availability
+                model="gemini-2.5-flash-lite",  # Using 2.5 Flash instead of Pro for better availability
                 contents=prompt,
                 config=config
             )
