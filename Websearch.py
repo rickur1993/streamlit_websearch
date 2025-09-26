@@ -1022,6 +1022,14 @@ class AzureAIAgentsSearch:
                 error=str(e),
                 has_grounding=False
             )
+class AttrDict(dict):
+    def __getattr__(self, item):
+        try:
+            return self[item]
+        except KeyError:
+            raise AttributeError(f"'AttrDict' object has no attribute '{item}'")
+    def __setattr__(self, key, value):
+        self[key] = value
 
 def add_citations_to_text(response_result: SearchResult) -> str:
     """Add inline citations to the response text for Gemini and Azure AI Agents"""
@@ -1347,6 +1355,9 @@ def main():
             with st.spinner(f"🔍 Searching with Azure AI Agents..."):
                 result = AzureAIAgentsSearch.search(search_query)
                 
+        wrapped_result = AttrDict(result)
+        display_search_result(wrapped_result)
+
         st.divider()
         display_search_result(result)
         
