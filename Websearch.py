@@ -1074,7 +1074,7 @@ def add_citations_to_text(response_result: SearchResult) -> str:
 
 def display_search_result(result: SearchResult):
     """Display search results with proper grounding information"""
-    if result.success:
+    if result["success"]:
         # Success header with metrics
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -1334,7 +1334,7 @@ def main():
         display_search_result(result)
         
         # Save to history
-        if save_history and result.success:
+        if save_history and result["success"]:
             if 'search_history' not in st.session_state:
                 st.session_state.search_history = []
             
