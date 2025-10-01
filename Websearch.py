@@ -649,7 +649,7 @@ def main():
     
     # Model selection with corrected model names and quota information
     model_options = {
-        "Flash (Recommended - Fastest)": "gemini-2.0-flash-exp",
+        "Flash (Fastest)": "gemini-2.0-flash-exp",
         "Pro 2.5 (Advanced Reasoning)": "gemini-2.5-pro-preview-03-25"
         
     }
