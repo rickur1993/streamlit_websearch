@@ -1,1563 +1,519 @@
-import streamlit as st
-import time
-from typing import Dict, Any, List, Optional
-from dataclasses import dataclass
-from datetime import datetime
-import os
-import json
-from dotenv import load_dotenv
+# file: GEMINI_GPT_V1.py
+
 import os
 import re
-import requests 
-import subprocess
+import time
+from typing import Dict, Any, Optional, List
+from urllib.parse import urlparse
+import streamlit as st
 
-
-# API Keys from Streamlit 
-#GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-#OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-#AZURE_AI_FOUNDRY_ENDPOINT = st.secrets["AZURE_AI_FOUNDRY_ENDPOINT"]
-AZURE_AI_FOUNDRY_KEY = st.secrets["AZURE_AI_FOUNDRY_KEY"]
-AZURE_OPENAI_ENDPOINT = st.secrets["AZURE_OPENAI_ENDPOINT"]
-AZURE_OPENAI_KEY = st.secrets["AZURE_OPENAI_KEY"]
-AZURE_MODEL_DEPLOYMENT = st.secrets["AZURE_MODEL_DEPLOYMENT"]
-AZURE_AGENT_ID = st.secrets["AZURE_AGENT_ID"]
-
-# Try importing the new Google GenAI SDK first (recommended)
-try:
-    from google import genai
-    from google.genai import types
-    NEW_SDK_AVAILABLE = True
-    OLD_SDK_AVAILABLE = False
-except ImportError:
-    NEW_SDK_AVAILABLE = False
-    # Fallback to old SDK
-    try:
-        import google.generativeai as genai_old
-        OLD_SDK_AVAILABLE = True
-        try:
-            from google.generativeai.types import ToolConfig
-            TOOL_CONFIG_AVAILABLE = True
-        except ImportError:
-            TOOL_CONFIG_AVAILABLE = False
-    except ImportError:
-        OLD_SDK_AVAILABLE = False
-        TOOL_CONFIG_AVAILABLE = False
-
-# Try importing OpenAI for GPT-4 Responses API
-try:
-    import openai
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
-
-# Try importing Azure OpenAI SDK
-try:
-    from openai import AzureOpenAI
-    AZURE_OPENAI_AVAILABLE = True
-except ImportError:
-    AZURE_OPENAI_AVAILABLE = False
-
-print(f"OpenAI vailable: {OPENAI_AVAILABLE}")
-print(f"Azure OpenAI Available: {AZURE_OPENAI_AVAILABLE}")
-
-# Page configuration
-st.set_page_config(
-    page_title="External Web Search",
-    page_icon="🔍",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-@dataclass
-class SearchResult:
-    success: bool
-    response: str
-    sources: List[Dict[str, str]]
-    search_queries: List[str]
-    model: str
-    timestamp: str
-    response_time: float
-    error: Optional[str] = None
-    has_grounding: bool = False
-    raw_metadata: Optional[Dict] = None
-
-# Standard system prompt for consistency
-STANDARD_SYSTEM_PROMPT = """You are a helpful assistant with access to current web information. Always provide accurate, up-to-date information with proper citations when available."""
+# Configure API key: recommended to set GEMINI_API_KEY in the environment
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]  # replace if needed
 
 class GeminiGroundingSearch:
     """
-    Gemini grounding search using Google Search tool, returning SearchResult object.
-    Fixed to return SearchResult object instead of dictionary to prevent AttributeError.
+    Grounded search with:
+    - True streaming output (no "streaming" label shown)
+    - Inline citations as shortened clickable URL links
+    - No separate sources or "type of searches" sections rendered
+    - Adaptive prompt (omits irrelevant sections)
+    - Immediate completion after streaming finishes
+    - Follow-up question suggestions
     """
-    @staticmethod
-    def search(query: str) -> SearchResult:
-        start_time = time.time()
-        
+
+    def __init__(self, api_key: str):
         try:
-            # Check if new SDK is available
-            if not NEW_SDK_AVAILABLE:
-                return SearchResult(
-                    success=False,
-                    response="",
-                    sources=[],
-                    search_queries=[],
-                    model="Gemini SDK Not Available",
-                    timestamp=datetime.now().isoformat(),
-                    response_time=time.time() - start_time,
-                    error="Google GenAI SDK not available. Please install: pip install google-genai",
-                    has_grounding=False
-                )
-            
-            # Check for API key - use the global variable that's loaded from Streamlit secrets
-            # if not GEMINI_API_KEY or GEMINI_API_KEY == "your-gemini-api-key-here":
-            #     return SearchResult(
-            #         success=False,
-            #         response="",
-            #         sources=[],
-            #         search_queries=[],
-            #         model="Gemini API Key Missing",
-            #         timestamp=datetime.now().isoformat(),
-            #         response_time=time.time() - start_time,
-            #         error="Gemini API key missing or not configured in Streamlit secrets. Please add GEMINI_API_KEY to your Streamlit secrets.",
-            #         has_grounding=False
-            #     )
-
-            import streamlit as st
-
-            try:
-                from google import genai
-                GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-                client = genai.Client(api_key=GEMINI_API_KEY)
-                models = client.models.list()
-                model_names = [model.name for model in models]
-                st.success("✅ Gemini API key is valid. Models available:")
-                st.write("Gemini API Key:", st.secrets["GEMINI_API_KEY"])
-            except Exception as e:
-                st.error(f"❌ Gemini API key test failed: {e}")
-            # Enhanced prompt for better search results
-            prompt = (
-                f"Search web for current information about: '{query}'. "
-                f"Provide a comprehensive, detailed response with current data and recent developments. "
-                f"Include specific facts, figures, dates, and quantitative information. "
-                f"Structure your response clearly and cite your sources. "
-                f"Focus on the most recent information available (prioritize 2024-2025 data). "
-                f"User location: India - include relevant local context when applicable."
-                f"Based on the type of user question structure the headers into which different paragraphs are put"
-            )
-            
-            config = genai.types.GenerateContentConfig(
-                response_modalities=["TEXT"],
-                max_output_tokens=30000,
-                tools=[genai.types.Tool(google_search_retrieval=genai.types.GoogleSearchRetrieval())], # Proper format
-                temperature=0.1  # Lower temperature for more factual responses
-            )
-
-            response = client.models.generate_content(
-                model="gemini-2.5-flash-lite",  # Using 2.5 Flash instead of Pro for better availability
-                contents=prompt,
-                config=config
-            )
-
-            response_time = time.time() - start_time
-
-            # Extract response text
-            response_text = ""
-            if hasattr(response, "text") and response.text:
-                response_text = response.text
-            elif hasattr(response, "candidates") and response.candidates:
-                # Try to get text from candidates
-                for candidate in response.candidates:
-                    if hasattr(candidate, "content") and candidate.content:
-                        if hasattr(candidate.content, "parts"):
-                            for part in candidate.content.parts:
-                                if hasattr(part, "text") and part.text:
-                                    response_text += part.text
-            else:
-                response_text = str(response)
-
-            # Initialize result variables
-            sources = []
-            search_queries = [query]
-            has_grounding = False
-
-            # Extract grounding information
-            try:
-                if (hasattr(response, "candidates") and 
-                    response.candidates and 
-                    hasattr(response.candidates[0], "grounding_metadata")):
-                    
-                    grounding_metadata = response.candidates[0].grounding_metadata
-                    
-                    # Check if we have grounding chunks
-                    if hasattr(grounding_metadata, "grounding_chunks") and grounding_metadata.grounding_chunks:
-                        has_grounding = True
-                        
-                        # Extract sources from grounding chunks
-                        for chunk in grounding_metadata.grounding_chunks:
-                            if hasattr(chunk, "web") and chunk.web:
-                                title = getattr(chunk.web, "title", "Web Source")
-                                uri = getattr(chunk.web, "uri", "")
-                                
-                                if uri:  # Only add if we have a valid URI
-                                    sources.append({
-                                        "title": title[:100],  # Truncate long titles
-                                        "uri": uri
-                                    })
-                    
-                    # Extract search queries used
-                    if hasattr(grounding_metadata, "web_search_queries"):
-                        web_queries = list(grounding_metadata.web_search_queries)
-                        if web_queries:
-                            search_queries.extend(web_queries)
-
-            except Exception as grounding_error:
-                print(f"Error extracting grounding metadata: {grounding_error}")
-                # Continue without grounding info
-
-            # Heuristic check for grounding if metadata extraction failed
-            if not has_grounding and response_text:
-                grounding_indicators = [
-                    "according to", "based on recent", "current information",
-                    "latest", "recent reports", "sources indicate", "web search shows",
-                    "recent data", "current data", "search results", "found information"
-                ]
-                
-                response_lower = response_text.lower()
-                if any(indicator in response_lower for indicator in grounding_indicators):
-                    has_grounding = True
-
-            # Ensure we have a meaningful response
-            if not response_text.strip():
-                return SearchResult(
-                    success=False,
-                    response="",
-                    sources=[],
-                    search_queries=search_queries,
-                    model="gemini-2.5-flash-lite with Google Search",
-                    timestamp=datetime.now().isoformat(),
-                    response_time=response_time,
-                    error="No response generated by Gemini model",
-                    has_grounding=False
-                )
-
-            # Remove duplicates from sources (keep unique URIs)
-            unique_sources = []
-            seen_uris = set()
-            for source in sources:
-                if source["uri"] not in seen_uris:
-                    unique_sources.append(source)
-                    seen_uris.add(source["uri"])
-
-            return SearchResult(
-                success=True,
-                response=response_text.strip(),
-                sources=unique_sources[:10],  # Limit to 10 sources max
-                search_queries=list(set(search_queries)),  # Remove duplicates
-                model="gemini-2.5-flash with Google Search",
-                timestamp=datetime.now().isoformat(),
-                response_time=response_time,
-                has_grounding=has_grounding
-            )
-
+            from google import genai
+            from google.genai import types
+            os.environ["GEMINI_API_KEY"] = api_key
+            self.client = genai.Client()
+            self.types = types
         except ImportError:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="Import Error",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error="Google GenAI SDK not installed. Please install: pip install google-genai",
-                has_grounding=False
-            )
-            
-        except Exception as e:
-            error_message = str(e)
-            
-            # Provide more specific error messages
-            if "API_KEY" in error_message.upper() or "INVALID" in error_message.upper():
-                error_message = "Invalid API key. Please check your Gemini API key configuration."
-            elif "PERMISSION" in error_message.upper() or "FORBIDDEN" in error_message.upper():
-                error_message = "Permission denied. Please check if your API key has the required permissions."
-            elif "QUOTA" in error_message.upper() or "LIMIT" in error_message.upper():
-                error_message = "API quota exceeded. Please check your usage limits."
-            elif "NETWORK" in error_message.upper() or "CONNECTION" in error_message.upper():
-                error_message = "Network error. Please check your internet connection."
-            
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[query],
-                model="gemini-2.5-flash-lite (Error)",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error=error_message,
-                has_grounding=False
-            )
-class GPTResponsesSearch:
-    """Handles GPT-4o with OpenAI Responses API for web search"""
-    
-    @staticmethod
-    def extract_response_text(response):
+            st.error("Google GenAI SDK not found. Install: pip install google-genai")
+            raise
+
+    def _adaptive_prompt(self, query: str) -> str:
         """
-        Extract the actual response text from OpenAI Responses API response
+        Adaptive prompt that only includes relevant sections per query type.
         """
-        response_text = ""
-        
-        try:
-            # Method 1: Direct output access (most common)
-            if hasattr(response, 'output') and response.output:
-                if isinstance(response.output, str):
-                    return response.output
-                elif hasattr(response.output, 'content'):
-                    # Handle content array
-                    if isinstance(response.output.content, list):
-                        for content_item in response.output.content:
-                            if hasattr(content_item, 'text') and content_item.text:
-                                response_text += content_item.text
-                    elif isinstance(response.output.content, str):
-                        response_text = response.output.content
-                    else:
-                        response_text = str(response.output.content)
-                else:
-                    response_text = str(response.output)
-            
-            # Method 2: Try accessing as message format (alternative structure)
-            elif hasattr(response, 'message') and hasattr(response.message, 'content'):
-                response_text = response.message.content
-            
-            # Method 3: Try choices format (if it follows chat completion structure)
-            elif hasattr(response, 'choices') and response.choices:
-                choice = response.choices[0]
-                if hasattr(choice, 'message') and hasattr(choice.message, 'content'):
-                    response_text = choice.message.content
-                elif hasattr(choice, 'text'):
-                    response_text = choice.text
-            
-            # Method 4: Last resort - convert to string
-            if not response_text:
-                response_text = str(response)
-        
-        except Exception as e:
-            print(f"Error extracting response text: {e}")
-            response_text = str(response)
-        
-        return response_text.strip() if response_text else ""
-
-    @staticmethod
-    def extract_sources_from_response(response):
-        """
-        Extract sources/citations from OpenAI Responses API response
-        """
-        sources = []
-        
-        try:
-            # Method 1: Check for citations attribute
-            if hasattr(response, 'citations') and response.citations:
-                for i, citation in enumerate(response.citations[:10]):  # Limit to 10
-                    source = {
-                        'title': citation.get('title', f'Web Source {i+1}'),
-                        'uri': citation.get('url', citation.get('uri', ''))
-                    }
-                    if source['uri']:  # Only add if we have a URL
-                        sources.append(source)
-            
-            # Method 2: Check in metadata
-            elif hasattr(response, 'metadata') and response.metadata:
-                if hasattr(response.metadata, 'sources'):
-                    for i, source in enumerate(response.metadata.sources[:10]):
-                        sources.append({
-                            'title': source.get('title', f'Web Source {i+1}'),
-                            'uri': source.get('url', source.get('uri', ''))
-                        })
-            
-            # Method 3: Check in output metadata
-            elif (hasattr(response, 'output') and 
-                  hasattr(response.output, 'metadata') and 
-                  hasattr(response.output.metadata, 'sources')):
-                for i, source in enumerate(response.output.metadata.sources[:10]):
-                    sources.append({
-                        'title': source.get('title', f'Web Source {i+1}'),
-                        'uri': source.get('url', source.get('uri', ''))
-                    })
-        
-        except Exception as e:
-            print(f"Error extracting sources: {e}")
-        
-        return sources
-    
-    @staticmethod
-    def search(query: str) -> SearchResult:
-        """Search using GPT-4o with OpenAI Responses API for web grounding"""
-        start_time = time.time()
-
-        if not OPENAI_AVAILABLE:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="OpenAI SDK Not Available",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error="OpenAI SDK not installed. Please install: pip install openai",
-                has_grounding=False
-            )
-
-        try:
-            client = openai.OpenAI(api_key=OPENAI_API_KEY)
-
-            enhanced_query = f"""
-            Please provide comprehensive, current, and accurate information about: "{query}"
-
-            I need detailed information including:
-            - Current facts and latest developments
-            - Key insights and important details
-            - Recent changes or updates (prioritize 2024/2025 information)
-            - Multiple perspectives when relevant
-            - Specific examples and evidence
-            - User location is India
-
-            Please structure your response clearly with proper organization and cite your sources.
-            """
-
-            # Use the Responses API
-            response = client.responses.create(
-                model="gpt-4o",
-                instructions=STANDARD_SYSTEM_PROMPT,
-                input=enhanced_query,
-                tools=[{"type": "web_search"}],
-                temperature=0.1
-            )
-
-            response_time = time.time() - start_time
-
-            # CORRECT PARSING LOGIC BASED ON YOUR DEBUG OUTPUT
-            response_text = ""
-            sources = []
-            search_queries = [query]
-            
-            try:
-                # Based on your debug output: response.output is a list
-                # Item 0: ResponseFunctionWebSearch (web search call)  
-                # Item 1: ResponseOutputMessage (actual response content)
-                
-                if hasattr(response, 'output') and isinstance(response.output, list):
-                    
-                    # Find the ResponseOutputMessage in the output list
-                    for item in response.output:
-                        # Check if this is the message response (not the web search call)
-                        if (hasattr(item, 'type') and item.type == 'message' and 
-                            hasattr(item, 'content') and isinstance(item.content, list)):
-                            
-                            # Extract text from message content
-                            for content_item in item.content:
-                                if hasattr(content_item, 'text') and content_item.text:
-                                    response_text += content_item.text
-                                    
-                                    # Extract sources from annotations if available
-                                    if hasattr(content_item, 'annotations'):
-                                        for annotation in content_item.annotations:
-                                            if (hasattr(annotation, 'type') and 
-                                                annotation.type == 'url_citation'):
-                                                source = {
-                                                    'title': getattr(annotation, 'title', 'Web Source'),
-                                                    'uri': getattr(annotation, 'url', '')
-                                                }
-                                                if source['uri'] and source not in sources:
-                                                    sources.append(source)
-                            break
-                    
-                    # If no message found, try alternative parsing
-                    if not response_text and len(response.output) > 1:
-                        # Try the second item (index 1) as it's usually the response
-                        second_item = response.output[1]
-                        if hasattr(second_item, 'content') and isinstance(second_item.content, list):
-                            for content_item in second_item.content:
-                                if hasattr(content_item, 'text'):
-                                    response_text += content_item.text
-                
-                # Clean up response text
-                response_text = response_text.strip() if response_text else ""
-                
-                # Remove duplicate sources (keep unique URLs)
-                unique_sources = []
-                seen_urls = set()
-                for source in sources:
-                    if source['uri'] not in seen_urls:
-                        unique_sources.append(source)
-                        seen_urls.add(source['uri'])
-                sources = unique_sources[:10]  # Limit to 10 sources
-                
-            except Exception as parsing_error:
-                print(f"Parsing error: {parsing_error}")
-                # Fallback to string conversion
-                response_text = str(response)
-            
-            has_grounding = len(sources) > 0 or "web_search" in str(response.output)
-
-            return SearchResult(
-                success=True,
-                response=response_text,
-                sources=sources,
-                search_queries=search_queries,
-                model="GPT-4o Responses API with Web Search",
-                timestamp=datetime.now().isoformat(),
-                response_time=response_time,
-                has_grounding=has_grounding
-            )
-
-        except Exception as e:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="GPT-4 Responses API (Error)",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error=str(e),
-                has_grounding=False
-            )
-
-class AzureAIAgentsSearch:
-    """Azure AI Foundry Agents with Bing Search using REST API with enhanced debugging and authentication"""
-    
-    @staticmethod
-    def enhance_query_for_azure(query: str) -> str:
-        """Create comprehensive, structured prompt for Azure AI Agents"""
         return f"""
-        You are a professional research analyst and business intelligence expert. Provide a comprehensive, 
-        detailed analysis for: "{query}"
-        
-        RESEARCH REQUIREMENTS:
-        - Search for the most current information available (prioritize 2024-2025 data)
-        - Include specific financial figures, percentages, dates, and quantitative metrics
-        - Provide company-by-company or topic-by-topic detailed breakdown
-        - Include recent developments, regulatory changes, and market trends
-        - Add strategic insights and forward-looking analysis
-        - Compare multiple perspectives and sources when relevant
-        - User location: India (prioritize Indian market context)
-        
-        RESPONSE STRUCTURE REQUIRED:
-        1. **Executive Summary** (2-3 sentences with key findings)
-        2. **Detailed Analysis** with subheadings for each major point
-        3. **Key Metrics & Data** (use specific numbers, percentages, dates)
-        4. **Recent Developments** (last 6-12 months)
-        5. **Strategic Implications** and outlook
-        6. **Summary Table** ( wherever applicable )
-        7. **Actionable Recommendation** ( wherever applicable )
-        8. **Sources & Citations** (properly reference all claims)
-        
-        SEARCH INSTRUCTION: Use Bing grounding tool to find the most current, authoritative sources 
-        including financial reports, regulatory filings, industry analyses, and recent news.
+Analyze the following query and provide a comprehensive response using up-to-date grounded information.
+
+Query: {query}
+
+ADAPTIVE STRUCTURE:
+- ALWAYS: ## Executive Summary (2-3 sentences), ## Main Analysis (well-structured core content)
+-Use ##Executive summary or ##Overview interchangeably depending on the query type. If formal query, business query use "Executive Summary" but in case of informal query or more personal interest query start with "Overview".
+- INCLUDE WHEN RELEVANT: Key Facts & Figures, Timeline, Comparative Analysis (tables), Regional/Geographic Breakdown,
+  Current Status, Technical Details, Impact Analysis, Future Outlook, Recommendations
+- EXCLUDE IRRELEVANT: Do not include sections that do not add value for this query type
+  (e.g., recommendations for sports results; future outlook for concluded historical events).
+
+QUERY TYPE HINTS:
+- Factual/Informational → concise facts, dates, numbers
+- Sports/Entertainment → scores, highlights, player performance (no recommendations/outlook)
+- Comparison/Market → tables, metrics, analysis; recommendations if decision-oriented
+- How-to/Technical → step-by-step, technical details
+- Current Events → timeline + current status + recent developments
+- Historical → timeline + impact (no predictions)
+
+FORMATTING:
+- Use ## for main sections, ### for subsections
+- Use **bold** for key terms and numbers
+- Use markdown tables for comparisons
+- Use bullet points (- or *) for lists
+- DO NOT include any citation numbers like [1], [2] in your response - citations will be added automatically
+- Ensure the response is complete and not truncated
+""".strip()
+
+    def _shorten_url_domain(self, url: str) -> str:
         """
-
-    
-    def create_enhanced_instructions(query: str) -> str:
-        """Create detailed additional instructions for the Azure AI Agent"""
-        return f"""
-        CRITICAL SEARCH INSTRUCTIONS for query: "{query}"
-
-        **MANDATORY ACTIONS:**
-        1. MUST use Bing search grounding tool for current information
-        2. MUST search for 2024-2025 specific data and developments  
-        3. MUST include quantitative metrics (percentages, figures, dates)
-        4. MUST provide company-specific or sector-specific breakdown
-        5. MUST cite authoritative sources for all claims
-
-        **CONTENT DEPTH REQUIREMENTS:**
-        - Minimum 500-800 words for comprehensive coverage
-        - Include specific financial data, market metrics, regulatory updates
-        - Provide both current performance data AND forward-looking insights
-        - Compare multiple companies/aspects when relevant
-        
-        **BUSINESS INTELLIGENCE FORMAT:**
-        Structure the response as a professional business intelligence report suitable for:
-        - Investment decision-making
-        - Strategic business planning  
-        - Regulatory compliance assessment
-        - Market analysis and competitive intelligence
-
-        **ADDITIONAL REQUIREMENTS:**
-        - Include visual aids (charts, graphs) where applicable
-        - Ensure clarity and conciseness in language
-        - Tailor content to the target audience's expertise level
-
-        This query requires REAL-TIME web search data. Do not rely on training data alone.
+        Extract and shorten URL to display format like 'example.com'
         """
+        try:
+            # Skip vertex AI redirect URLs
+            if "vertexaisearch.cloud.google.com" in url:
+                return None
+                
+            parsed = urlparse(url)
+            netloc = parsed.netloc
+            
+            # Remove 'www.' prefix if present
+            if netloc.startswith('www.'):
+                netloc = netloc[4:]
+            
+            # Keep just domain.tld for cleaner display
+            parts = netloc.split('.')
+            if len(parts) >= 2:
+                netloc = '.'.join(parts[-2:])
+            
+            return netloc if netloc else None
+        except:
+            return None
 
-    
-    def search(query: str) -> SearchResult:
-        """Search using Azure AI Foundry Agent Service with Bing grounding via REST API"""
+    def _generate_followup_questions(self, query: str, response: str) -> List[str]:
+        """
+        Generate 3 follow-up questions based on the original query and response.
+        Uses a lightweight, fast model for quick generation.
+        """
+        try:
+            prompt = f"""Based on this user query and the response provided, suggest 3 brief, natural follow-up questions the user might want to ask next.
+
+Original Query: {query}
+
+Response Summary: {response[:500]}...
+
+Generate 3 concise follow-up questions (each under 15 words) that would naturally extend this conversation. Return ONLY the questions, one per line, without numbers or bullets.
+"""
+            
+            # Use flash model for fast follow-up generation
+            config = self.types.GenerateContentConfig(
+                max_output_tokens=200,
+                temperature=0.8,
+            )
+            
+            result = self.client.models.generate_content(
+                model="gemini-2.0-flash-exp",  # Fastest model for quick suggestions
+                contents=prompt,
+                config=config,
+            )
+            
+            if hasattr(result, 'text') and result.text:
+                questions = [q.strip() for q in result.text.strip().split('\n') if q.strip()]
+                # Remove any numbering or bullets
+                questions = [re.sub(r'^[\d\.\-\*\)]+\s*', '', q) for q in questions]
+                return questions[:3]
+            
+            return []
+        except Exception as e:
+            return []
+
+    def search_with_grounding_stream(
+        self,
+        query: str,
+        model: str = "gemini-2.0-flash-exp",
+        max_tokens: int = 30000,
+        temperature: float = 0.7,
+        container=None,
+        time_badge=None,
+        status_badge=None,
+    ) -> Dict[str, Any]:
+        """
+        Streams the model output live to the container without any "streaming" label.
+        Extracts grounding metadata from streaming chunks and inserts clickable shortened URL links.
+        Completes immediately after streaming finishes.
+        Returns a dict with success, response, metadata, model_used, search_time, followup_questions.
+        """
         start_time = time.time()
-        
-        # Import required libraries
         try:
-            import streamlit as st
-            import requests
-            from azure.identity import ClientSecretCredential, DefaultAzureCredential
-            from azure.core.exceptions import ClientAuthenticationError
-            import os
-        except ImportError as e:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="Dependencies Missing",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error=f"Required dependencies missing: {e}. Install with: pip install azure-identity",
-                has_grounding=False
+            grounding_tool = self.types.Tool(google_search=self.types.GoogleSearch())
+            config = self.types.GenerateContentConfig(
+                max_output_tokens=max_tokens,
+                temperature=temperature,
+                tools=[grounding_tool]
             )
-        
-        # Get configuration from Streamlit secrets
-        try:
-            # Extract project endpoint and project name from the full endpoint
-            full_endpoint = st.secrets["AZURE_AI_FOUNDRY_ENDPOINT"]
-            agent_id = st.secrets.get("AZURE_AGENT_ID", "")
-            tenant_id = st.secrets.get("AZURE_TENANT_ID", "")
-            
-            # For service principal authentication (required for Streamlit Cloud)
-            client_id = st.secrets.get("AZURE_CLIENT_ID", "")
-            client_secret = st.secrets.get("AZURE_CLIENT_SECRET", "")
-            
-            # Extract the correct endpoint format
-            if "/api/projects/" in full_endpoint:
-                base_endpoint = full_endpoint.split("/api/projects/")[0]
-                project_path_part = full_endpoint.split("/api/projects/")[1].rstrip('/')
-                project_endpoint = f"{base_endpoint}/api/projects/{project_path_part}"
-            else:
-                base_endpoint = full_endpoint.rstrip('/')
-                if ".services.ai.azure.com" in base_endpoint:
-                    subdomain = base_endpoint.split("//")[1].split(".")[0]
-                    project_name = f"{subdomain}_project"
-                    project_endpoint = f"{base_endpoint}/api/projects/{project_name}"
-                else:
-                    project_endpoint = base_endpoint
-            
-        except KeyError as e:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="Azure Configuration Missing",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error=f"Missing Streamlit secret: {e}. Need AZURE_AI_FOUNDRY_ENDPOINT, AZURE_AGENT_ID, AZURE_TENANT_ID, AZURE_CLIENT_ID, and AZURE_CLIENT_SECRET",
-                has_grounding=False
-            )
-        
-        if not project_endpoint:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="Azure Not Configured",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error="AZURE_AI_FOUNDRY_ENDPOINT not configured",
-                has_grounding=False
-            )
-        
-        if not agent_id:
-            return SearchResult(
-                success=False,
-                response="",
-                search_queries=[],
-                model="Azure Agent Not Configured",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error="AZURE_AGENT_ID not configured. Please create an agent in Azure AI Foundry first.",
-                has_grounding=False
-            )
-        
-        try:
-            # Authentication with CORRECT scope for Azure AI Foundry
-            credential = None
-            
-            if client_id and client_secret and tenant_id:
-                # Method 1: Service Principal Authentication (Recommended for Streamlit Cloud)
-                try:
-                    credential = ClientSecretCredential(
-                        tenant_id=tenant_id,
-                        client_id=client_id,
-                        client_secret=client_secret
-                    )
-                    
-                    # Try multiple scopes to find the correct one
-                    token_scopes = [
-                        "https://ai.azure.com/.default",  # Primary scope for AI Foundry
-                        "https://cognitiveservices.azure.com/.default",  # Fallback scope
-                        "https://management.azure.com/.default"  # Management scope
-                    ]
-                    
-                    token_result = None
-                    successful_scope = None
-                    
-                    for scope in token_scopes:
-                        try:
-                            token_result = credential.get_token(scope)
-                            successful_scope = scope
-                            break
-                        except Exception:
-                            continue
-                    
-                    if not token_result:
-                        return SearchResult(
-                            success=False,
-                            response="",
-                            sources=[],
-                            search_queries=[],
-                            model="Token Acquisition Failed",
-                            timestamp=datetime.now().isoformat(),
-                            response_time=time.time() - start_time,
-                            error="Failed to acquire token with any of the attempted scopes. Please verify service principal permissions.",
-                            has_grounding=False
-                        )
-                    
-                    headers = {
-                        "Authorization": f"Bearer {token_result.token}",
-                        "Content-Type": "application/json",
-                        "User-Agent": "StreamlitApp/1.0"
-                    }
-                    
-                except ClientAuthenticationError as auth_error:
-                    return SearchResult(
-                        success=False,
-                        response="",
-                        sources=[],
-                        search_queries=[],
-                        model="Service Principal Auth Failed",
-                        timestamp=datetime.now().isoformat(),
-                        response_time=time.time() - start_time,
-                        error=f"Service Principal authentication failed: {auth_error}. Please verify your AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, and AZURE_TENANT_ID.",
-                        has_grounding=False
-                    )
-                except Exception as auth_error:
-                    return SearchResult(
-                        success=False,
-                        response="",
-                        sources=[],
-                        search_queries=[],
-                        model="Authentication Setup Failed",
-                        timestamp=datetime.now().isoformat(),
-                        response_time=time.time() - start_time,
-                        error=f"Authentication setup failed: {auth_error}",
-                        has_grounding=False
-                    )
-            
-            else:
-                # Method 2: DefaultAzureCredential (fallback for local development)
-                try:
-                    # Set environment variables for DefaultAzureCredential if available
-                    if tenant_id:
-                        os.environ['AZURE_TENANT_ID'] = tenant_id
-                    if client_id:
-                        os.environ['AZURE_CLIENT_ID'] = client_id
-                    if client_secret:
-                        os.environ['AZURE_CLIENT_SECRET'] = client_secret
-                    
-                    credential = DefaultAzureCredential()
-                    
-                    # Try the same multiple scopes approach
-                    token_scopes = [
-                        "https://ai.azure.com/.default",
-                        "https://cognitiveservices.azure.com/.default",
-                        "https://management.azure.com/.default"
-                    ]
-                    
-                    token_result = None
-                    successful_scope = None
-                    
-                    for scope in token_scopes:
-                        try:
-                            token_result = credential.get_token(scope)
-                            successful_scope = scope
-                            break
-                        except Exception:
-                            continue
-                    
-                    if not token_result:
-                        return SearchResult(
-                            success=False,
-                            response="",
-                            sources=[],
-                            search_queries=[],
-                            model="Default Auth Failed",
-                            timestamp=datetime.now().isoformat(),
-                            response_time=time.time() - start_time,
-                            error="Authentication failed. For Streamlit Cloud deployment, you need to add AZURE_CLIENT_ID and AZURE_CLIENT_SECRET to your secrets.",
-                            has_grounding=False
-                        )
-                    
-                    headers = {
-                        "Authorization": f"Bearer {token_result.token}",
-                        "Content-Type": "application/json",
-                        "User-Agent": "StreamlitApp/1.0"
-                    }
-                    
-                except ClientAuthenticationError as auth_error:
-                    return SearchResult(
-                        success=False,
-                        response="",
-                        sources=[],
-                        search_queries=[],
-                        model="Default Auth Failed",
-                        timestamp=datetime.now().isoformat(),
-                        response_time=time.time() - start_time,
-                        error=f"Authentication failed. For Streamlit Cloud deployment, you need to add AZURE_CLIENT_ID and AZURE_CLIENT_SECRET to your secrets. Error: {auth_error}",
-                        has_grounding=False
-                    )
-            
-            # Enhanced query for better results
-            enhanced_query = AzureAIAgentsSearch.enhance_query_for_azure(query)
 
-            enhanced_instructions = AzureAIAgentsSearch.create_enhanced_instructions(query)
+            enhanced_query = self._adaptive_prompt(query)
+            full_text = ""
+            grounding_meta = {"grounding_chunks": [], "grounding_supports": []}
             
-            # Use the correct API version for Azure AI Foundry Agent Service
-            api_version = "2025-05-01"  # Stable version for Agent Service
-            
-            # Step 1: Create thread with correct endpoint format
-            thread_url = f"{project_endpoint}/threads"
-            thread_params = {"api-version": api_version}
-            
-            thread_response = requests.post(
-                thread_url, 
-                headers=headers, 
-                json={}, 
-                params=thread_params, 
-                timeout=30
-            )
-            
-            if thread_response.status_code != 200:
-                error_details = thread_response.text
-                
-                # Specific error handling
-                if thread_response.status_code == 401:
-                    return SearchResult(
-                        success=False,
-                        response="",
-                        sources=[],
-                        search_queries=[],
-                        model="Authentication Failed",
-                        timestamp=datetime.now().isoformat(),
-                        response_time=time.time() - start_time,
-                        error=f"Authentication failed (401). Token audience mismatch. Please ensure your Service Principal has proper permissions for Azure AI Foundry. Details: {error_details}",
-                        has_grounding=False
-                    )
-                elif thread_response.status_code == 403:
-                    return SearchResult(
-                        success=False,
-                        response="",
-                        sources=[],
-                        search_queries=[],
-                        model="Access Forbidden",
-                        timestamp=datetime.now().isoformat(),
-                        response_time=time.time() - start_time,
-                        error=f"Access forbidden (403). Please ensure your Service Principal has these Azure roles: Cognitive Services User, Azure AI Developer. Details: {error_details}",
-                        has_grounding=False
-                    )
-                elif thread_response.status_code == 404:
-                    return SearchResult(
-                        success=False,
-                        response="",
-                        sources=[],
-                        search_queries=[],
-                        model="Endpoint Not Found",
-                        timestamp=datetime.now().isoformat(),
-                        response_time=time.time() - start_time,
-                        error=f"Endpoint not found (404). Please verify your project endpoint format: {project_endpoint}. Details: {error_details}",
-                        has_grounding=False
-                    )
-                
-                return SearchResult(
-                    success=False,
-                    response="",
-                    sources=[],
-                    search_queries=[],
-                    model="Thread Creation Failed",
-                    timestamp=datetime.now().isoformat(),
-                    response_time=time.time() - start_time,
-                    error=f"Failed to create thread: {thread_response.status_code} - {error_details}",
-                    has_grounding=False
-                )
-            
-            thread_data = thread_response.json()
-            thread_id = thread_data.get("id")
-            if not thread_id:
-                return SearchResult(
-                    success=False,
-                    response="",
-                    sources=[],
-                    search_queries=[],
-                    model="Thread ID Missing",
-                    timestamp=datetime.now().isoformat(),
-                    response_time=time.time() - start_time,
-                    error="No thread ID returned from Azure AI Foundry",
-                    has_grounding=False
-                )
+            if container:
+                placeholder = container.empty()
 
-            # Step 2: Add message to thread
-            message_url = f"{project_endpoint}/threads/{thread_id}/messages"
-            message_data = {
-                "role": "user",
-                "content": enhanced_query
+            # Streaming call
+            stream = self.client.models.generate_content_stream(
+                model=model,
+                contents=enhanced_query,
+                config=config,
+            )
+
+            # Stream chunks and extract metadata in real-time
+            for chunk in stream:
+                if hasattr(chunk, "text") and chunk.text:
+                    full_text += chunk.text
+                    if container:
+                        placeholder.markdown(full_text)
+                
+                # Extract grounding metadata from each chunk
+                chunk_meta = self._extract_grounding_metadata_from_chunk(chunk)
+                if chunk_meta:
+                    # Merge chunks
+                    for ch in chunk_meta.get("grounding_chunks", []):
+                        if ch not in grounding_meta["grounding_chunks"]:
+                            grounding_meta["grounding_chunks"].append(ch)
+                    # Merge supports
+                    for sup in chunk_meta.get("grounding_supports", []):
+                        if sup not in grounding_meta["grounding_supports"]:
+                            grounding_meta["grounding_supports"].append(sup)
+                
+                # Update time badge unobtrusively
+                if time_badge:
+                    elapsed = time.time() - start_time
+                    time_badge.metric("Time", f"{elapsed:.2f}s")
+
+            # Insert inline citations with clickable shortened URL links immediately after streaming
+            final_text = self._insert_inline_url_citations(full_text, grounding_meta)
+            
+            # Replace streamed text with inline-cited finalized text
+            if container:
+                placeholder.markdown(final_text, unsafe_allow_html=True)
+
+            end_time = time.time()
+            
+            # Final time update
+            if time_badge:
+                time_badge.metric("Time", f"{(end_time - start_time):.2f}s")
+            
+            # Set status to Complete immediately
+            if status_badge:
+                status_badge.metric("Status", "Complete")
+
+            # Generate follow-up questions
+            followup_questions = self._generate_followup_questions(query, final_text)
+
+            return {
+                "success": True,
+                "response": final_text,
+                "grounding_metadata": grounding_meta,
+                "model_used": model,
+                "search_time": end_time - start_time,
+                "followup_questions": followup_questions,
             }
 
-            message_response = requests.post(
-                message_url,
-                headers=headers,
-                json=message_data,
-                params=thread_params,
-                timeout=30
-            )
-
-            if message_response.status_code != 200:
-                return SearchResult(
-                    success=False,
-                    response="",
-                    sources=[],
-                    search_queries=[],
-                    model="Message Creation Failed",
-                    timestamp=datetime.now().isoformat(),
-                    response_time=time.time() - start_time,
-                    error=f"Failed to create message: {message_response.status_code} - {message_response.text}",
-                    has_grounding=False
-                )
-
-            # Step 3: Create and run the agent
-            run_url = f"{project_endpoint}/threads/{thread_id}/runs"
-            run_data = {
-                "assistant_id": agent_id,
-                "additional_instructions": enhanced_instructions
+        except Exception as e:
+            end_time = time.time()
+            error_msg = str(e)
+            
+            # Check if it's a quota error and provide helpful message
+            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                if container:
+                    container.error(
+                        "⚠️ **Quota Exceeded**: You've hit the API rate limit. "
+                        "Try using Flash model or wait a few minutes before trying again. "
+                        f"\n\nDetails: {error_msg[:200]}"
+                    )
+            else:
+                if container:
+                    container.error(f"Error: {error_msg}")
+            
+            if time_badge:
+                time_badge.metric("Time", f"{(end_time - start_time):.2f}s")
+            if status_badge:
+                status_badge.metric("Status", "Error")
+            return {
+                "success": False,
+                "error": error_msg,
+                "error_type": type(e).__name__,
+                "response": None,
+                "grounding_metadata": None,
+                "model_used": model,
+                "search_time": end_time - start_time,
+                "followup_questions": [],
             }
 
-            run_response = requests.post(
-                run_url,
-                headers=headers,
-                json=run_data,
-                params=thread_params,
-                timeout=30
-            )
-
-            if run_response.status_code != 200:
-                return SearchResult(
-                    success=False,
-                    response="",
-                    sources=[],
-                    search_queries=[],
-                    model="Run Creation Failed",
-                    timestamp=datetime.now().isoformat(),
-                    response_time=time.time() - start_time,
-                    error=f"Failed to create run: {run_response.status_code} - {run_response.text}",
-                    has_grounding=False
-                )
-
-            run_data_response = run_response.json()
-            run_id = run_data_response.get("id")
-            if not run_id:
-                return SearchResult(
-                    success=False,
-                    response="",
-                    sources=[],
-                    search_queries=[],
-                    model="Run ID Missing",
-                    timestamp=datetime.now().isoformat(),
-                    response_time=time.time() - start_time,
-                    error="No run ID returned from Azure AI Foundry",
-                    has_grounding=False
-                )
-
-            # Step 4: Poll for completion
-            run_status_url = f"{project_endpoint}/threads/{thread_id}/runs/{run_id}"
-            max_polls = 60  # 2 minutes max
-            poll_count = 0
-
-            while poll_count < max_polls:
-                try:
-                    status_response = requests.get(
-                        run_status_url,
-                        headers=headers,
-                        params=thread_params,
-                        timeout=15
-                    )
-                    
-                    if status_response.status_code != 200:
-                        break
-                    
-                    status_data = status_response.json()
-                    status = status_data.get("status")
-                    
-                    if status == "completed":
-                        break
-                    elif status in ["failed", "cancelled", "expired"]:
-                        error_details = status_data.get("last_error", {})
-                        error_msg = error_details.get("message", "Unknown error")
-                        return SearchResult(
-                            success=False,
-                            response="",
-                            sources=[],
-                            search_queries=[],
-                            model=f"Azure AI Agent ({agent_id})",
-                            timestamp=datetime.now().isoformat(),
-                            response_time=time.time() - start_time,
-                            error=f"Run failed with status '{status}': {error_msg}",
-                            has_grounding=False
-                        )
-                    
-                    time.sleep(2)
-                    poll_count += 1
-                    
-                except requests.RequestException:
-                    time.sleep(3)
-                    poll_count += 1
-
-            if poll_count >= max_polls:
-                return SearchResult(
-                    success=False,
-                    response="",
-                    sources=[],
-                    search_queries=[],
-                    model=f"Azure AI Agent ({agent_id})",
-                    timestamp=datetime.now().isoformat(),
-                    response_time=time.time() - start_time,
-                    error="Run timed out waiting for completion after 2 minutes",
-                    has_grounding=False
-                )
-
-            # Step 5: Get messages from thread
-            messages_url = f"{project_endpoint}/threads/{thread_id}/messages"
-
-            messages_response = requests.get(
-                messages_url,
-                headers=headers,
-                params=dict(thread_params, order="asc"),
-                timeout=30
-            )
-
-            if messages_response.status_code != 200:
-                return SearchResult(
-                    success=False,
-                    response="",
-                    sources=[],
-                    search_queries=[],
-                    model=f"Azure AI Agent ({agent_id})",
-                    timestamp=datetime.now().isoformat(),
-                    response_time=time.time() - start_time,
-                    error=f"Failed to get messages: {messages_response.status_code} - {messages_response.text}",
-                    has_grounding=False
-                )
-
-            messages_data = messages_response.json()
-
-            # Step 6: Parse response
-            response_text = ""
-            sources = []
-            search_queries = [query]
-            has_grounding = False
-
-            # Extract the assistant's response (most recent assistant message)
-            messages_list = messages_data.get("data", [])
-            assistant_messages = [msg for msg in messages_list if msg.get("role") == "assistant"]
-
-            if assistant_messages:
-                latest_message = assistant_messages[-1]
-                content_items = latest_message.get("content", [])
-                
-                for content_item in content_items:
-                    if content_item.get("type") == "text":
-                        text_data = content_item.get("text", {})
-                        response_text = text_data.get("value", "")
-                        
-                        # Extract citations/sources from annotations
-                        annotations = text_data.get("annotations", [])
-                        
-                        for annotation in annotations:
-                            annotation_type = annotation.get("type")
-                            if annotation_type == "file_citation":
-                                file_citation = annotation.get("file_citation", {})
-                                sources.append({
-                                    "title": f"File: {file_citation.get('file_id', 'Unknown')}",
-                                    "uri": f"file://{file_citation.get('file_id', '')}"
-                                })
-                                has_grounding = True
-                            elif annotation_type == "file_path":
-                                file_path = annotation.get("file_path", {})
-                                sources.append({
-                                    "title": f"File: {file_path.get('file_id', 'Unknown')}",
-                                    "uri": f"file://{file_path.get('file_id', '')}"
-                                })
-                                has_grounding = True
-                            elif annotation_type == "url_citation":
-                                # Handle URL citations from Bing search
-                                url_citation = annotation.get("url_citation", {})
-                                if url_citation:
-                                    title = url_citation.get("title", url_citation.get("name", "Unknown Source"))
-                                    url = url_citation.get("url", url_citation.get("uri", ""))
-                                    if url:  # Only add if URL exists
-                                        sources.append({
-                                            "title": title,
-                                            "uri": url
-                                        })
-                                        has_grounding = True
-
-                        break
-
-            # Heuristic grounding detection
-            if not has_grounding and response_text:
-                grounding_indicators = [
-                    "according to", "based on recent", "current information",
-                    "latest", "recent reports", "today", "this year", "2024", "2025",
-                    "search results show", "found that", "indicates", "sources suggest",
-                    "according to web sources", "recent data", "current data", "bing search"
-                ]
-                
-                response_lower = response_text.lower()
-                if any(indicator in response_lower for indicator in grounding_indicators):
-                    has_grounding = True
-
-            # Clean up response
-            if not response_text:
-                response_text = "No response generated by the agent."
-
-            response_time = time.time() - start_time
-
-            return SearchResult(
-                success=True,
-                response=response_text,
-                sources=sources[:10],  # Limit to 10 sources
-                search_queries=search_queries,
-                model=f"Azure AI Foundry Agent ({agent_id}) with Bing Grounding",
-                timestamp=datetime.now().isoformat(),
-                response_time=response_time,
-                has_grounding=has_grounding
-            )
-
-        
-        except Exception as e:
-            return SearchResult(
-                success=False,
-                response="",
-                sources=[],
-                search_queries=[],
-                model="Azure AI Error",
-                timestamp=datetime.now().isoformat(),
-                response_time=time.time() - start_time,
-                error=str(e),
-                has_grounding=False
-            )
-class AttrDict(dict):
-    def __getattr__(self, item):
+    def _extract_grounding_metadata_from_chunk(self, chunk) -> Optional[Dict[str, Any]]:
+        """
+        Extract grounding metadata structure from a streaming chunk.
+        """
         try:
-            return self[item]
-        except KeyError:
-            raise AttributeError(f"'AttrDict' object has no attribute '{item}'")
-    def __setattr__(self, key, value):
-        self[key] = value
+            if hasattr(chunk, "candidates") and chunk.candidates:
+                cand = chunk.candidates[0]
+                if hasattr(cand, "grounding_metadata") and cand.grounding_metadata:
+                    gm = cand.grounding_metadata
+                    meta = {
+                        "grounding_chunks": [],
+                        "grounding_supports": [],
+                    }
 
-def add_citations_to_text(response_result: SearchResult) -> str:
-    """Add inline citations to the response text for Gemini and Azure AI Agents"""
-    if not response_result.has_grounding or not response_result.sources:
-        return response_result.response
-    
-    # Apply inline citations to Gemini models and Azure AI Agents
-    model_lower = response_result.model.lower()
-    if "gemini" not in model_lower and "azure" not in model_lower:
-        return response_result.response
-    
-    text = response_result.response
-    sources = response_result.sources
-    
-    if not sources:
-        return text
-    
-    # For Azure AI Agents, handle the special citation format
-    if "azure" in model_lower:
-        import re
-        
-        # Replace Azure citation patterns with inline links
-        # Pattern matches 【3:1†source】, 【3:2†source】, etc.
-        citation_pattern = r'【\d+:\d+†source】'
-        
-        # Find all citations in the text
-        citations = re.findall(citation_pattern, text)
-        
-        # Replace each citation with corresponding source link
-        source_index = 0
-        for citation in citations:
-            if source_index < len(sources):
-                source = sources[source_index]
-                title = source.get('title', f'Source {source_index + 1}')
-                uri = source.get('uri', '')
-                
-                if uri:
-                    replacement = f" [{title}]({uri})"
-                    text = text.replace(citation, replacement, 1)  # Replace only first occurrence
-                else:
-                    text = text.replace(citation, f" [{title}]", 1)
-                
-                source_index += 1
-            else:
-                # Remove citation if no corresponding source
-                text = text.replace(citation, '', 1)
-        
-        return text
-    
-    # For Gemini models, use the original paragraph-based approach
-    else:
-        # Split into paragraphs
-        paragraphs = text.split('\n\n')
-        
-        # Add citations to paragraphs (one source per substantial paragraph)
-        source_idx = 0
-        for i, paragraph in enumerate(paragraphs):
-            if len(paragraph.strip()) > 100 and source_idx < len(sources):  # Only substantial paragraphs
-                source = sources[source_idx]
-                title = source.get('title', f'Source {source_idx + 1}')
-                uri = source.get('uri', '')
-                if uri:
-                    paragraphs[i] = paragraph.rstrip() + f" [{title}]({uri})"
-                source_idx += 1
-        
-        return '\n\n'.join(paragraphs)
+                    if getattr(gm, "grounding_chunks", None):
+                        chunks = []
+                        for ch in gm.grounding_chunks:
+                            if hasattr(ch, "web") and ch.web:
+                                chunks.append({
+                                    "uri": getattr(ch.web, "uri", ""),
+                                    "title": getattr(ch.web, "title", ""),
+                                })
+                        meta["grounding_chunks"] = chunks
 
-def display_search_result(result: SearchResult):
-    """Display search results with proper grounding information"""
-    if result.success:
-        # Success header with metrics
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("⚡ Response Time", f"{result.response_time:.2f}s")
-        with col2:
-            st.metric("🔗 Sources", len(result.sources))
-        with col3:
-            st.metric("🔍 Searches", len(result.search_queries))
-        with col4:
-            st.metric("🌐 Grounded", "Yes" if result.has_grounding else "No")
-        
-        # Show grounding status
-        if result.has_grounding:
-            st.success(f"✅ Successfully grounded search: {result.model}")
-        else:
-            st.warning(f"⚠️ No grounding available: {result.model}")
-        
-        # Show search queries used
-        if result.search_queries:
-            st.info(f"🔍 **Search queries used:** {', '.join(result.search_queries)}")
-        
-        # Main response
-        st.subheader("📄 Search Response")
-        
-        # Add citations to response
-        response_with_citations = add_citations_to_text(result)
-        st.markdown(response_with_citations)
-        
-        # Sources section (only for non-Gemini models)
-        if result.sources and "gemini" not in result.model.lower():
-            st.subheader("🔗 Sources & References")
-            for i, source in enumerate(result.sources, 1):
-                title = source.get('title', f'Source {i}')
-                uri = source.get('uri', '')
-                if uri:
-                    st.markdown(f"**{i}.** [{title}]({uri})")
-                else:
-                    st.markdown(f"**{i}.** {title}")
-        
-        # Technical details
-        with st.expander("📊 Technical Details"):
-            st.json({
-                "timestamp": result.timestamp,
-                "model_used": result.model,
-                "response_time_seconds": result.response_time,
-                "sources_count": len(result.sources),
-                "search_queries_count": len(result.search_queries),
-                "has_grounding": result.has_grounding
-            })
-    
-    else:
-        st.error(f"❌ Search failed")
-        
-        with st.expander("🔧 Error Details & Solutions", expanded=True):
-            st.error(f"**Error:** {result.error}")
+                    if getattr(gm, "grounding_supports", None):
+                        supports = []
+                        for s in gm.grounding_supports:
+                            if hasattr(s, "segment"):
+                                supports.append({
+                                    "text": getattr(s.segment, "text", ""),
+                                    "start_index": getattr(s.segment, "start_index", 0),
+                                    "end_index": getattr(s.segment, "end_index", 0),
+                                    "grounding_chunk_indices": getattr(s, "grounding_chunk_indices", []),
+                                })
+                        meta["grounding_supports"] = supports
+
+                    return meta
+            return None
+        except Exception:
+            return None
+
+    def _insert_inline_url_citations(self, text: str, gm: Optional[Dict[str, Any]]) -> str:
+        """
+        Insert inline citations as clickable shortened URL links (e.g., 'example.com')
+        - Shows shortened domain names as clickable links inline
+        - Multiple sources shown as comma-separated links
+        """
+        if not gm or not gm.get("grounding_chunks"):
+            return self._clean_redirects(text)
+
+        chunks: List[Dict[str, str]] = gm.get("grounding_chunks", [])
+        supports: List[Dict[str, Any]] = gm.get("grounding_supports", [])
+
+        cited_text = self._clean_redirects(text)
+        cited_segments = set()
+
+        # For each supported segment, append shortened URL citations
+        for s in supports:
+            segment_text = s.get("text", "").strip()
+            if not segment_text or segment_text in cited_segments:
+                continue
+
+            chunk_indices = s.get("grounding_chunk_indices", [])
+            if not chunk_indices:
+                continue
+
+            # Create citation with shortened URLs
+            citation_parts = []
+            for idx in chunk_indices:
+                if idx < len(chunks):
+                    url = chunks[idx].get("uri", "")
+                    title = chunks[idx].get("title", "Source")
+                    
+                    shortened_display = self._shorten_url_domain(url)
+                    if not shortened_display:
+                        continue
+                    
+                    # Create HTML link with shortened domain as display text
+                    citation_parts.append(
+                        f'<a href="{url}" target="_blank" title="{title}" '
+                        f'style="text-decoration:none;color:#1a73e8;font-size:0.85em;font-weight:500;">'
+                        f'{shortened_display}</a>'
+                    )
             
-            error_str = str(result.error or "").upper()
+            if not citation_parts:
+                continue
             
-            if "NO GOOGLE AI SDK" in error_str or "NO SDK" in error_str:
-                st.markdown("""
-                **📦 SDK Installation Required:**
-                
-                For Gemini grounding experience, install the new SDK:
-                ```bash
-                pip install google-genai
-                ```
-                
-                Or install the legacy SDK:
-                ```bash
-                pip install google-generativeai
-                ```
-                """)
+            # Join multiple sources with commas in parentheses
+            citation = " <span style='color:#666;font-size:0.85em;'>(" + ", ".join(citation_parts) + ")</span>"
+
+            # Find first occurrence of segment not already cited
+            seg_escaped = re.escape(segment_text)
+            pattern = re.compile(rf"({seg_escaped})(?!\s*[\(\<])", flags=re.IGNORECASE)
             
-            elif "OPENAI" in error_str:
-                st.markdown("""
-                **📦 OpenAI SDK Installation Required:**
-                
-                For GPT-4 Responses API or Azure AI Agents:
-                ```bash
-                pip install openai
-                ```
-                """)
+            new_text, n_subs = pattern.subn(rf"\1{citation}", cited_text, count=1)
             
-            elif "AZURE" in error_str:
-                st.markdown("""
-                **🔧 Azure Configuration Issues:**
-                1. Check Azure OpenAI endpoint URL
-                2. Verify Azure OpenAI API key
-                3. Confirm model deployment name
-                4. Ensure Bing Search is enabled in Azure AI Foundry
-                5. Check API version compatibility
-                """)
-            
-            elif "API_KEY" in error_str or "INVALID" in error_str or "AUTHENTICATION" in error_str:
-                st.markdown("""
-                **🔑 API Key Issues:**
-                1. API keys are embedded in the code
-                2. Contact administrator if authentication fails
-                3. Check if API access is enabled for your service
-                """)
-            
-            elif "PERMISSION" in error_str or "FORBIDDEN" in error_str:
-                st.markdown("""
-                **🚫 Permission Issues:**
-                1. API key may not have required permissions
-                2. Grounding may not be available in your region
-                3. Check service settings and quotas
-                """)
-            
-            else:
-                st.markdown("""
-                **🔧 General Troubleshooting:**
-                1. Update to latest SDKs
-                2. Check internet connection
-                3. Verify service status
-                4. Try a simpler query first
-                """)
+            if n_subs > 0:
+                cited_text = new_text
+                cited_segments.add(segment_text)
+
+        return cited_text
+
+    @staticmethod
+    def _clean_redirects(s: str) -> str:
+        """
+        Remove redirect URLs, numbered citations, and normalize whitespace.
+        """
+        # Remove Vertex AI grounding redirect URLs
+        grounding_url_pattern = r"https://vertexaisearch\.cloud\.google\.com/grounding-api-redirect/[A-Za-z0-9_-]+"
+        s = re.sub(grounding_url_pattern, "", s)
+        
+        # Remove any numbered citations like [[1]], [1], etc.
+        s = re.sub(r'\[\[?\d+\]?\]', '', s)
+        
+        # Normalize whitespace
+        s = re.sub(r"\s+\n", "\n", s)
+        s = re.sub(r"\n{3,}", "\n\n", s)
+        return s.strip()
+
 
 def main():
-    # Header
-    st.title("🔍 Advanced Web Search Comparison")
-    st.markdown("**Choose between Gemini 2.5 Flash-lite, GPT-4o Responses API, or Azure AI Agents with Bing Search**")
+    st.set_page_config(
+        page_title="Websearch Comparison", 
+        page_icon="🔍", 
+        layout="wide",
+        initial_sidebar_state="expanded"  # Keep sidebar always visible
+    )
+    
+    st.title("🔍 Websearch Comparison")
+    st.caption("Adaptive, grounded answers with inline URL citations. True streaming with follow-up suggestions.")
 
-    # Model Selection
-    st.subheader("🤖 Select AI Model")
-    
-    # Check SDK availability
-    gemini_available = NEW_SDK_AVAILABLE or OLD_SDK_AVAILABLE
-    openai_available = OPENAI_AVAILABLE
-    azure_available = AZURE_OPENAI_AVAILABLE
-    
-    options = []
-    if gemini_available:
-        options.append("Gemini 2.5 Flash-lite with Google Search Grounding")
-    if openai_available:
-        options.append("GPT-4o with Responses API Web Search")
-    if azure_available:
-        options.append("Azure AI Agents with Bing Search Grounding")
-    
-    if not options:
-        st.error("❌ No AI models available. Please install required SDKs and configure API keys:")
-        st.markdown("""
-        ```bash
-        pip install google-genai openai
-        ```
-        """)
+    # SDK check
+    try:
+        from google import genai  # noqa: F401
+        sdk_ok = True
+    except ImportError:
+        sdk_ok = False
+        st.error("Google GenAI SDK not found. Install: pip install google-genai")
         return
-    
-    selected_model = st.selectbox(
-        "Choose your AI model:",
-        options,
-        index=0
-    )
-    
-    # Show model status
-    
-    if "Responses API" in selected_model:
-        if openai_available:
-            st.success("✅ OpenAI SDK available - GPT-4o with web search enabled")
-        else:
-            st.error("❌ OpenAI SDK not available")
-    elif "Azure AI Agents" in selected_model:
-        if azure_available:
-            st.success(f"✅ Azure OpenAI SDK available - {AZURE_MODEL_DEPLOYMENT} with Bing Search enabled")
-        else:
-            st.error("❌ Azure OpenAI SDK not available")
-    
-    # Sidebar
-    st.sidebar.title("⚙️ Configuration")
-    
-    # API Key status
-    st.sidebar.subheader("🔑 API Keys")
-    st.sidebar.success("✅ Gemini API Key: Configured")
-    if OPENAI_API_KEY and OPENAI_API_KEY != "sk-your-openai-api-key-here":
-        st.sidebar.success("✅ OpenAI API Key: Configured")
-    else:
-        st.sidebar.warning("⚠️ OpenAI API Key: Not Configured")
-    
-    if AZURE_OPENAI_KEY and AZURE_OPENAI_KEY != "your-azure-openai-key-here":
-        st.sidebar.success("✅ Azure OpenAI API Key: Configured")
-    else:
-        st.sidebar.warning("⚠️ Azure OpenAI API Key: Not Configured")
-    
-    if AZURE_AI_FOUNDRY_KEY and AZURE_AI_FOUNDRY_KEY != "your-azure-ai-foundry-key-here":
-        st.sidebar.success("✅ Azure AI Foundry Key: Configured")
-    else:
-        st.sidebar.warning("⚠️ Azure AI Foundry Key: Not Configured")
-    
-    # Azure Configuration Details
-    if "Azure" in selected_model:
-        st.sidebar.subheader("🔧 Azure Configuration")
-        st.sidebar.info(f"**Endpoint:** {AZURE_OPENAI_ENDPOINT[:30]}...")
-        st.sidebar.info(f"**Model:** {AZURE_MODEL_DEPLOYMENT}")
-        st.sidebar.info(f"**AI Foundry:** {AZURE_AI_FOUNDRY_ENDPOINT[:30]}...")
-    
-    # Settings
-    st.sidebar.subheader("⚙️ Settings")
-    save_history = st.sidebar.checkbox("💾 Save History", True)
-    show_citations = st.sidebar.checkbox("📎 Show Citations", True)
-    
-    # Main interface
-    st.subheader("🔍 Search Query")
-    
-    # Search input
-    col1, col2 = st.columns([5, 1])
-    with col1:
-        search_query = st.text_input(
-            "Enter your search query:",
-            placeholder="e.g., Latest AI developments in 2025",
-            key="main_search",
-            label_visibility="collapsed"
-        )
-    with col2:
-        st.write("")
-        search_button = st.button("🚀 Search", type="primary", use_container_width=True)
-    
-    # Execute search
-    if search_button and search_query:
-        if not search_query.strip():
-            st.warning("⚠️ Please enter a search query")
-            return
-        
-        # Determine which model to use
-        if "Gemini" in selected_model:
-            if not gemini_available:
-                st.error("❌ Gemini SDK not available")
-                return
-            
-            with st.spinner(f"🔍 Searching with Gemini..."):
-                result = GeminiGroundingSearch.search(search_query)
-        
-        elif "Responses API" in selected_model:  # GPT-4 Responses API
-            if not openai_available:
-                st.error("❌ OpenAI SDK not available")
-                return
-            
-            if OPENAI_API_KEY == "sk-your-openai-api-key-here":
-                st.error("❌ OpenAI API key not configured in code")
-                return
-            
-            with st.spinner(f"🔍 Searching with GPT-4o Responses API..."):
-                result = GPTResponsesSearch.search(search_query)
-        
-        elif "Azure AI Agents" in selected_model:  # Azure AI Agents
-            if not azure_available:
-                st.error("❌ Azure OpenAI SDK not available")
-                return
-            
-            if AZURE_OPENAI_KEY == "your-azure-openai-key-here":
-                st.error("❌ Azure API keys not configured in code")
-                return
-            
-            with st.spinner(f"🔍 Searching with Azure AI Agents..."):
-                result = AzureAIAgentsSearch.search(search_query)
-                
-        
-        
 
-        #st.divider()
-        display_search_result(result)
-        
-        # Save to history
-        if save_history and result.success:
-            if 'search_history' not in st.session_state:
-                st.session_state.search_history = []
-            
-            st.session_state.search_history.append({
-                'query': search_query,
-                'result': result,
-                'model': selected_model,
-                'timestamp': datetime.now().isoformat()
-            })
-            
-            # Keep last 10
-            if len(st.session_state.search_history) > 10:
-                st.session_state.search_history = st.session_state.search_history[-10:]
+    # API key check
+    if not GEMINI_API_KEY or GEMINI_API_KEY == "your-api-key-here":
+        st.error("Set GEMINI_API_KEY environment variable or update GEMINI_API_KEY in this file.")
+        return
+
+    # Sidebar controls - ALWAYS VISIBLE
+    st.sidebar.header("⚙️ Settings")
     
-    elif search_button and not search_query:
-        st.warning("🔍 Please enter a search query")
+    # Model selection with corrected model names and quota information
+    model_options = {
+        "Flash (Recommended - Fastest)": "gemini-2.0-flash-exp",
+        "Pro 2.5 (Advanced Reasoning)": "gemini-2.5-pro-preview-03-25",
+        "Pro 2.0 Exp (Experimental)": "gemini-2.0-pro-exp"
+    }
     
-    # History sidebar
-    if save_history and 'search_history' in st.session_state and st.session_state.search_history:
-        st.sidebar.subheader("📝 Recent Searches")
-        
-        for i, item in enumerate(reversed(st.session_state.search_history[-5:])):
-            with st.sidebar.expander(f"🔍 {item['query'][:25]}..."):
-                st.write(f"**Model:** {item['model'][:20]}...")
-                st.write(f"**Time:** {item['timestamp'][:16]}")
-                st.write(f"**Grounded:** {'Yes' if item['result'].has_grounding else 'No'}")
-                st.write(f"**Sources:** {len(item['result'].sources)}")
-                if st.button("🔄 Rerun", key=f"rerun_{i}"):
-                    st.session_state.main_search = item['query']
-                    st.rerun()
-        
-        if st.sidebar.button("🗑️ Clear History"):
-            st.session_state.search_history = []
-            st.rerun()
-    
-    # Footer
-    st.divider()
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown(f"""
-        **🔍 Available Models:**
-        - Gemini: {'Available' if gemini_available else 'Not Available'}
-        - GPT-4o: {'Available' if openai_available else 'Not Available'}
-        - Azure AI: {'Available' if azure_available else 'Not Available'}
-        - Grounding: All models support web search
-        - Current: {selected_model[:30]}...
-        """)
-    
-    with col2:
-        st.markdown("""
-        **💡 Tips:**
-        - Use specific queries for better results
-        - Include current year for recent info
-        - All models provide real-time data
-        - Check sources for verification
-        - Azure uses Bing Search grounding
-        """)
-    
-    st.markdown("---")
-    st.markdown(
-        "**Powered by Gemini, GPT-4o, and Azure AI Agents with Web Search** | "
-        "API Keys Embedded | "
-        "Usage may incur costs"
+    selected_model_name = st.sidebar.selectbox(
+        "Model",
+        list(model_options.keys()),
+        index=0,
+        help="Flash: Fastest with high quotas (1500 RPD)\nPro 2.5: Best reasoning, higher quotas\nPro 2.0: Experimental, limited quota"
     )
+    model = model_options[selected_model_name]
+    
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📊 Model Info")
+    
+    if "Flash" in selected_model_name:
+        st.sidebar.info(
+            "**Flash**: 192+ tokens/sec\n\n"
+            "**Quota**: 1,500 requests/day (free)\n\n"
+            "**Best for**: Fast responses, real-time search, general queries"
+        )
+    elif "2.5" in selected_model_name:
+        st.sidebar.info(
+            "**Pro 2.5**: Thinking mode enabled\n\n"
+            "**Quota**: Higher limits than 2.0\n\n"
+            "**Best for**: Complex reasoning, deep analysis, coding tasks"
+        )
+    else:
+        st.sidebar.warning(
+            "**Pro 2.0 Exp**: Experimental\n\n"
+            "**Quota**: Limited (may hit rate limits)\n\n"
+            "**Note**: Switch to Pro 2.5 or Flash if you see quota errors"
+        )
+
+    # Query input
+    st.header("Query")
+    query = st.text_area(
+        "Enter your query",
+        placeholder="e.g., Impact of Trump tariffs on India Pharma sector",
+        height=120,
+        key="query_input"
+    )
+
+    col_a, col_b, col_c = st.columns([1, 1, 2])
+    with col_a:
+        go = st.button("🔍 Run", type="primary", use_container_width=True)
+    with col_b:
+        clear = st.button("🗑️ Clear", use_container_width=True)
+
+    if clear:
+        for k in ["last_result", "query_input"]:
+            if k in st.session_state:
+                del st.session_state[k]
+        st.rerun()
+
+    # Streaming display area
+    stream_container = st.container()
+    
+    # Metrics row
+    metric_col1, metric_col2, metric_col3 = st.columns(3)
+    time_badge = metric_col1.empty()
+    model_badge = metric_col2.empty()
+    status_badge = metric_col3.empty()
+
+    if go and query.strip():
+        # Display model being used
+        if "flash" in model.lower():
+            model_display = "FLASH"
+        elif "2.5" in model:
+            model_display = "PRO 2.5"
+        else:
+            model_display = "PRO 2.0"
+            
+        model_badge.metric("Model", model_display)
+        status_badge.metric("Status", "Running")
+
+        search = GeminiGroundingSearch(GEMINI_API_KEY)
+
+        # True streaming with silent UI
+        result = search.search_with_grounding_stream(
+            query=query.strip(),
+            model=model,
+            container=stream_container,
+            time_badge=time_badge,
+            status_badge=status_badge,
+        )
+
+        st.session_state["last_result"] = result
+        st.session_state["last_query"] = query.strip()
+
+    # Display follow-up questions at the very end
+    if "last_result" in st.session_state and st.session_state["last_result"].get("success"):
+        result = st.session_state["last_result"]
+        followup_questions = result.get("followup_questions", [])
+        
+        if followup_questions:
+            st.markdown("---")
+            st.markdown("### 💭 Suggested Follow-up Questions")
+            
+            cols = st.columns(len(followup_questions))
+            for i, (col, question) in enumerate(zip(cols, followup_questions)):
+                with col:
+                    if st.button(
+                        f"❓ {question}", 
+                        key=f"followup_{i}",
+                        use_container_width=True,
+                        help="Click to ask this question"
+                    ):
+                        # Set the query and trigger rerun
+                        st.session_state["query_input"] = question
+                        st.rerun()
+
 
 if __name__ == "__main__":
     main()
