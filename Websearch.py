@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 import streamlit as st
 
 # Configure API key: recommended to set GEMINI_API_KEY in the environment
-GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"] # replace if needed
 
 class GeminiGroundingSearch:
     """
